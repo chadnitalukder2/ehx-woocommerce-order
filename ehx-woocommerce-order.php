@@ -308,12 +308,12 @@ class EHX_WooCommerce_Integration
                 ?>
             </form>
 
-            <div class="card" style="margin-top: 20px;">
+            <div class="card" style="margin-top: 20px; max-width: 800px;">
                 <h2>Order Queue Status</h2>
                 <?php $this->display_queue_status(); ?>
             </div>
 
-            <div class="card" style="margin-top: 20px;">
+            <div class="card" style="margin-top: 20px; max-width: 800px;">
                 <h2>Manual Actions</h2>
                 <table class="form-table">
                     <tr>
