@@ -1,10 +1,10 @@
 <?php
 
 /**
- * Plugin Name: EHx WooCommerce Order
+ * Plugin Name: EHX WooCommerce Order
  * Description: Complete integration for WooCommerce - syncs products from API and sends order quotes to API
  * Version: 1.0.0
- * Author: 
+ * Author:  EH Studio
  */
 
 // Prevent direct access
@@ -24,10 +24,9 @@ class EHX_WooCommerce_Integration
         add_action('admin_menu', array($this, 'add_admin_menu'));
         add_action('admin_init', array($this, 'settings_init'));
 
-        // Quote API hooks - Capture ALL orders when they are created
-        add_action('woocommerce_new_order', array($this, 'queue_order_for_api'));
-        add_action('woocommerce_order_status_changed', array($this, 'queue_order_for_api'));
-        add_action('woocommerce_checkout_order_processed', array($this, 'queue_order_for_api'));
+        // Quote API hooks
+        add_action('woocommerce_order_status_processing', array($this, 'queue_order_for_api'));
+        add_action('woocommerce_order_status_completed', array($this, 'queue_order_for_api'));
 
         // Product sync hooks
         add_action('wp_ajax_sync_products', array($this, 'sync_products_ajax'));
@@ -84,16 +83,6 @@ class EHX_WooCommerce_Integration
             'manage_options',
             'ehx_wc_integration',
             array($this, 'settings_page')
-        );
-
-        // Add submenu for all orders
-        add_submenu_page(
-            'options-general.php',
-            'EHx All Orders',
-            'EHx All Orders',
-            'manage_options',
-            'ehx_wc_all_orders',
-            array($this, 'all_orders_page')
         );
     }
 
@@ -249,10 +238,9 @@ class EHX_WooCommerce_Integration
     <?php
     }
 
-
     public function product_endpoint_render()
     {
-        $endpoint = get_option('ehx_wc_product_endpoint',  'https://www.portal.immersivebrands.co.uk/api/product');
+        $endpoint = get_option('ehx_wc_product_endpoint', '');
     ?>
         <input type='url' name='ehx_wc_product_endpoint' value='<?php echo esc_attr($endpoint); ?>' style='width: 400px;' required>
         <p class="description">Enter the full URL of your product API endpoint</p>
@@ -330,7 +318,6 @@ class EHX_WooCommerce_Integration
                 <table class="form-table">
                     <tr>
                         <th scope="row">Process Orders</th>
-
                         <td>
                             <form method="post" action="" style="display: inline;">
                                 <?php wp_nonce_field('ehx_wc_manual_process', 'ehx_wc_nonce'); ?>
@@ -346,17 +333,6 @@ class EHX_WooCommerce_Integration
                             <button id="manual-sync" class="button button-primary">Sync Products Now</button>
                             <div id="sync-status"></div>
                             <p class="description">Manually sync products from the API</p>
-                        </td>
-                    </tr>
-                    <tr>
-                        <th scope="row">Sync All Orders</th>
-                        <td>
-                            <form method="post" action="" style="display: inline;">
-                                <?php wp_nonce_field('ehx_wc_sync_all_orders', 'ehx_wc_nonce'); ?>
-                                <input type="hidden" name="action" value="sync_all_orders">
-                                <input type="submit" class="button button-secondary" value="Sync All Existing Orders" onclick="return confirm('This will add all existing orders to the queue. Continue?')">
-                            </form>
-                            <p class="description">Add all existing WooCommerce orders to the quote queue</p>
                         </td>
                     </tr>
                 </table>
@@ -377,7 +353,6 @@ class EHX_WooCommerce_Integration
                             action: 'sync_products',
                             nonce: '<?php echo wp_create_nonce('sync_products_nonce'); ?>'
                         },
-
                         success: function(response) {
                             if (response.success) {
                                 $('#sync-status').html('<p style="color: green;">' + response.data.message + '</p>');
@@ -405,117 +380,6 @@ class EHX_WooCommerce_Integration
             $this->process_queued_orders();
             echo '<div class="notice notice-success"><p>Orders processed successfully!</p></div>';
         }
-
-        // Handle sync all existing orders
-        if (
-            isset($_POST['action']) && $_POST['action'] === 'sync_all_orders' &&
-            wp_verify_nonce($_POST['ehx_wc_nonce'], 'ehx_wc_sync_all_orders')
-        ) {
-            $this->sync_all_existing_orders();
-            echo '<div class="notice notice-success"><p>All existing orders synced to queue!</p></div>';
-        }
-    }
-
-    /**
-     * All Orders Page
-     */
-    public function all_orders_page()
-    {
-        ?>
-        <div class="wrap">
-            <h1>EHx All WooCommerce Orders</h1>
-            
-            <div class="card" style="margin-top: 20px;">
-                <h2>Sync All Existing Orders</h2>
-                <p>This will add all existing WooCommerce orders to the quote queue.</p>
-                <form method="post" action="">
-                    <?php wp_nonce_field('ehx_wc_sync_all_orders', 'ehx_wc_nonce'); ?>
-                    <input type="hidden" name="action" value="sync_all_orders">
-                    <input type="submit" class="button button-primary" value="Sync All Existing Orders" onclick="return confirm('This will add all existing orders to the queue. Continue?')">
-                </form>
-            </div>
-
-            <div class="card" style="margin-top: 20px;">
-                <h2>All WooCommerce Orders</h2>
-                <?php $this->display_all_orders(); ?>
-            </div>
-        </div>
-        <?php
-    }
-
-    /**
-     * Display all WooCommerce orders
-     */
-    private function display_all_orders()
-    {
-        $orders = wc_get_orders(array(
-            'limit' => 50,
-            'orderby' => 'date',
-            'order' => 'DESC'
-        ));
-
-        if (empty($orders)) {
-            echo '<p>No orders found.</p>';
-            return;
-        }
-
-        echo '<table class="wp-list-table widefat fixed striped">';
-        echo '<thead>';
-        echo '<tr>';
-        echo '<th>Order ID</th>';
-        echo '<th>Date</th>';
-        echo '<th>Status</th>';
-        echo '<th>Customer</th>';
-        echo '<th>Total</th>';
-        echo '<th>In Queue</th>';
-        echo '</tr>';
-        echo '</thead>';
-        echo '<tbody>';
-
-        global $wpdb;
-        $table_name = $wpdb->prefix . 'ehx_wc_order_queue';
-
-        foreach ($orders as $order) {
-            $order_id = $order->get_id();
-            $in_queue = $wpdb->get_var($wpdb->prepare(
-                "SELECT processed FROM $table_name WHERE order_id = %d",
-                $order_id
-            ));
-
-            $queue_status = $in_queue !== null ? ($in_queue ? 'Processed' : 'Pending') : 'Not in Queue';
-
-            echo '<tr>';
-            echo '<td><a href="' . admin_url('post.php?post=' . $order_id . '&action=edit') . '">#' . $order->get_order_number() . '</a></td>';
-            echo '<td>' . $order->get_date_created()->format('Y-m-d H:i:s') . '</td>';
-            echo '<td><span class="woocommerce-status status-' . $order->get_status() . '">' . wc_get_order_status_name($order->get_status()) . '</span></td>';
-            echo '<td>' . $order->get_billing_first_name() . ' ' . $order->get_billing_last_name() . '</td>';
-            echo '<td>' . $order->get_formatted_order_total() . '</td>';
-            echo '<td>' . $queue_status . '</td>';
-            echo '</tr>';
-        }
-
-        echo '</tbody>';
-        echo '</table>';
-    }
-
-    /**
-     * Sync all existing orders to queue
-     */
-    private function sync_all_existing_orders()
-    {
-        $orders = wc_get_orders(array(
-            'limit' => -1,
-            'orderby' => 'date',
-            'order' => 'DESC'
-        ));
-
-        $count = 0;
-        foreach ($orders as $order) {
-            $this->queue_order_for_api($order->get_id());
-            $count++;
-        }
-
-        return $count;
     }
 
     /**
@@ -595,52 +459,21 @@ class EHX_WooCommerce_Integration
             return;
         }
 
-        // Log the order being processed
-        if (defined('WP_DEBUG') && WP_DEBUG) {
-            error_log("EHX Integration: Processing order ID: $order_id, Status: " . $order->get_status());
-        }
-
         $order_data = $this->prepare_order_data($order);
 
         global $wpdb;
         $table_name = $wpdb->prefix . 'ehx_wc_order_queue';
 
-        // Check if order already exists in queue
-        $existing = $wpdb->get_var($wpdb->prepare(
-            "SELECT id FROM $table_name WHERE order_id = %d",
-            $order_id
-        ));
-
-        if ($existing) {
-            // Update existing order data
-            $wpdb->update(
-                $table_name,
-                array(
-                    'order_data' => json_encode($order_data),
-                    'processed' => 0
-                ),
-                array('order_id' => $order_id),
-                array('%s', '%d'),
-                array('%d')
-            );
-            if (defined('WP_DEBUG') && WP_DEBUG) {
-                error_log("EHX Integration: Updated existing order in queue: $order_id");
-            }
-        } else {
-            // Insert new order in queue
-            $wpdb->insert(
-                $table_name,
-                array(
-                    'order_id' => $order_id,
-                    'order_data' => json_encode($order_data),
-                    'processed' => 0
-                ),
-                array('%d', '%s', '%d')
-            );
-            if (defined('WP_DEBUG') && WP_DEBUG) {
-                error_log("EHX Integration: Added new order to queue: $order_id");
-            }
-        }
+        // Insert or update order in queue
+        $wpdb->replace(
+            $table_name,
+            array(
+                'order_id' => $order_id,
+                'order_data' => json_encode($order_data),
+                'processed' => 0
+            ),
+            array('%d', '%s', '%d')
+        );
     }
 
     /**
@@ -664,12 +497,6 @@ class EHX_WooCommerce_Integration
 
             // Get product attributes/meta
             $meta_data = $item->get_meta_data();
-
-            // Debug logging instead of die()
-            if (defined('WP_DEBUG') && WP_DEBUG) {
-                error_log('EHX Integration: Processing order item meta data: ' . print_r($meta_data, true));
-            }
-
             foreach ($meta_data as $meta) {
                 $key = strtolower(str_replace(' ', '_', $meta->key));
                 switch ($key) {
@@ -782,11 +609,11 @@ class EHX_WooCommerce_Integration
 
                 // Add order note
                 $order = wc_get_order($queue_item->order_id);
-
                 if ($order) {
                     $order->add_order_note('Quote sent to API successfully');
                 }
             } else {
+                // Log error
                 error_log("EHX Integration: Error processing order ID {$queue_item->order_id}");
             }
         }
@@ -964,7 +791,6 @@ class EHX_WooCommerce_Integration
                 }
             }
 
-
             // Save product
             $product_id = $product->save();
 
@@ -1001,7 +827,7 @@ class EHX_WooCommerce_Integration
     }
 
     /**
-     * Assign product categories
+     * Helper function to assign product categories
      */
     private function assign_product_categories($categories_data)
     {
@@ -1039,7 +865,6 @@ class EHX_WooCommerce_Integration
 
         return $category_ids;
     }
-
 
     /**
      * Set product thumbnail image
