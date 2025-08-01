@@ -441,7 +441,7 @@ class EHX_WooCommerce_Integration
         }
 
         // Get queue data with pagination
-        $per_page = 10;
+        $per_page = 3;
         $current_page = isset($_GET['queue_page']) ? max(1, intval($_GET['queue_page'])) : 1;
         $offset = ($current_page - 1) * $per_page;
 
@@ -450,10 +450,10 @@ class EHX_WooCommerce_Integration
 
         $queue_items = $wpdb->get_results($wpdb->prepare(
             "SELECT q.*, p.post_title as order_title 
-         FROM $table_name q 
-         LEFT JOIN {$wpdb->posts} p ON q.order_id = p.ID 
-         ORDER BY q.created_at DESC 
-         LIMIT %d OFFSET %d",
+     FROM $table_name q 
+     LEFT JOIN {$wpdb->posts} p ON q.order_id = p.ID 
+     ORDER BY q.created_at DESC 
+     LIMIT %d OFFSET %d",
             $per_page,
             $offset
         ));
@@ -533,7 +533,6 @@ class EHX_WooCommerce_Integration
 
             echo "<tr class='queue-item-{$status_class}'>";
             echo "<th class='check-column'><input type='checkbox' name='queue_items[]' value='{$item->id}'></th>";
-            // echo "<td><strong>{$item->id}</strong></td>";
             echo "<td><strong>" . $counter . "</strong></td>";
             echo "<td>";
             echo "#{$item->order_id} ";
@@ -575,15 +574,72 @@ class EHX_WooCommerce_Integration
 
             // Hidden row for order data
             echo "<tr id='order-data-{$item->id}' class='order-data-row' style='display: none;'>";
-            echo "<td colspan='8'>";
+            echo "<td colspan='7'>";
             echo "<div style='background: #f9f9f9; padding: 15px; margin: 5px 0; border-left: 4px solid #0073aa;'>";
             echo "<h4>Order Data for Queue ID #{$item->id}</h4>";
-            echo "<pre style='background: white; padding: 10px; border: 1px solid #ddd; overflow-x: auto; max-height: 300px;'>";
-            echo esc_html(json_encode($order_data, JSON_PRETTY_PRINT));
-            echo "</pre>";
+
+            // Use $order_data directly (it's already decoded above)
+            if ($order_data && is_array($order_data)) {
+                // Customer Information Section
+                echo "<div style='background: white; padding: 15px; margin-bottom: 15px; border: 1px solid #ddd; border-radius: 5px;'>";
+                echo "<h5 style='color: #0073aa; margin: 0 0 10px 0; padding-bottom: 5px; border-bottom: 2px solid #0073aa;'>Customer Information</h5>";
+                echo "<table style='width: 100%; border-collapse: collapse;'>";
+
+                echo "<tr><td style='padding: 5px 10px; font-weight: bold; width: 150px;'>Name:</td><td style='padding: 5px 10px;'>" . esc_html($order_data['name'] ?? '') . "</td></tr>";
+                echo "<tr style='background: #f5f5f5;'><td style='padding: 5px 10px; font-weight: bold;'>Email:</td><td style='padding: 5px 10px;'>" . esc_html($order_data['email'] ?? '') . "</td></tr>";
+                echo "<tr><td style='padding: 5px 10px; font-weight: bold;'>Phone:</td><td style='padding: 5px 10px;'>" . esc_html($order_data['telephone'] ?? '') . "</td></tr>";
+                echo "<tr style='background: #f5f5f5;'><td style='padding: 5px 10px; font-weight: bold;'>Company:</td><td style='padding: 5px 10px;'>" . esc_html($order_data['company']) . "</td></tr>";
+
+
+                echo "</table>";
+                echo "</div>";
+
+                // Order Information Section
+                echo "<div style='background: white; padding: 15px; margin-bottom: 15px; border: 1px solid #ddd; border-radius: 5px;'>";
+                echo "<h5 style='color: #0073aa; margin: 0 0 10px 0; padding-bottom: 5px; border-bottom: 2px solid #0073aa;'>Order Information</h5>";
+                echo "<table style='width: 100%; border-collapse: collapse;'>";
+
+                echo "<tr><td style='padding: 5px 10px; font-weight: bold; width: 150px;'>Reference:</td><td style='padding: 5px 10px;'>" . esc_html($order_data['referance'] ?? '') . "</td></tr>";
+                echo "<tr style='background: #f5f5f5;'><td style='padding: 5px 10px; font-weight: bold;'>Payment Method:</td><td style='padding: 5px 10px;'>" . esc_html($order_data['payment_method'] ?? '') . "</td></tr>";
+                echo "<tr><td style='padding: 5px 10px; font-weight: bold;'>Location Key:</td><td style='padding: 5px 10px;'>" . esc_html($order_data['location_key'] ?? '') . "</td></tr>";
+
+                echo "</table>";
+                echo "</div>";
+
+                // Items Section
+                if (!empty($order_data['items']) && is_array($order_data['items'])) {
+                    echo "<div style='background: white; padding: 15px; border: 1px solid #ddd; border-radius: 5px;'>";
+                    echo "<h5 style='color: #0073aa; margin: 0 0 10px 0; padding-bottom: 5px; border-bottom: 2px solid #0073aa;'>Order Items</h5>";
+
+                    foreach ($order_data['items'] as $index => $orderItem) {
+                        echo "<div style='padding: 10px; margin-bottom: 10px; background: #f8f8f8; border-left: 3px solid #0073aa;'>";
+                        echo "<strong>Item " . ($index + 1) . ":</strong><br>";
+                        echo "<table style='width: 100%; border-collapse: collapse; margin-top: 5px;'>";
+
+                        echo "<tr><td style='padding: 3px 10px; font-weight: bold; width: 120px;'>Product:</td><td style='padding: 3px 10px;'>" . esc_html($orderItem['product'] ?? '') . "</td></tr>";
+                        echo "<tr><td style='padding: 3px 10px; font-weight: bold;'>Quantity:</td><td style='padding: 3px 10px;'>" . esc_html($orderItem['quantity'] ?? '') . "</td></tr>";
+                        echo "<tr><td style='padding: 3px 10px; font-weight: bold;'>Setup Price:</td><td style='padding: 3px 10px;'>$" . esc_html($orderItem['setup_price'] ?? '0') . "</td></tr>";
+                        echo "<tr><td style='padding: 3px 10px; font-weight: bold;'>Color:</td><td style='padding: 3px 10px;'>" . esc_html($orderItem['color']) . "</td></tr>";
+                        echo "<tr><td style='padding: 3px 10px; font-weight: bold;'>Quantity Color:</td><td style='padding: 3px 10px;'>" . esc_html($orderItem['quantity_color']) . "</td></tr>";
+                        echo "<tr><td style='padding: 3px 10px; font-weight: bold;'>Size:</td><td style='padding: 3px 10px;'>" . esc_html($orderItem['size']) . "</td></tr>";
+                        echo "<tr><td style='padding: 3px 10px; font-weight: bold;'>Fitting:</td><td style='padding: 3px 10px;'>" . esc_html($orderItem['fitting']) . "</td></tr>";
+
+                        echo "</table>";
+                        echo "</div>";
+                    }
+                    echo "</div>";
+                }
+            } else {
+                // Fallback to raw JSON if parsing fails
+                echo "<pre style='background: white; padding: 10px; border: 1px solid #ddd; overflow-x: auto; max-height: 300px;'>";
+                echo esc_html(json_encode(json_decode($item->order_data), JSON_PRETTY_PRINT));
+                echo "</pre>";
+            }
+
             echo "</div>";
             echo "</td>";
             echo "</tr>";
+
             $counter++;
         }
 
@@ -674,16 +730,14 @@ class EHX_WooCommerce_Integration
             .queue-item-processed {
                 background-color: #f0f9ff;
             }
+
             tr.queue-item-processed:nth-child(odd) {
                 background-color: #fff;
             }
+
             tr.queue-item-processed:nth-child(odd):hover {
                 background-color: #f6f7f7;
             }
-
-            /* .queue-item-pending {
-                background-color: #fef2f2;
-            } */
 
             .order-data-row td {
                 padding: 0 !important;
