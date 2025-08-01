@@ -516,7 +516,6 @@ class EHX_WooCommerce_Integration
         echo "<td class='manage-column column-cb check-column'><input type='checkbox' id='cb-select-all'></td>";
         echo "<th class='manage-column'>ID</th>";
         echo "<th class='manage-column'>Order ID</th>";
-        echo "<th class='manage-column'>Order Title</th>";
         echo "<th class='manage-column'>Customer Info</th>";
         echo "<th class='manage-column'>Created</th>";
         echo "<th class='manage-column'>Status</th>";
@@ -524,7 +523,7 @@ class EHX_WooCommerce_Integration
         echo "</tr>";
         echo "</thead>";
         echo "<tbody>";
-        $counter = ($current_page - 1) * $per_page + 1; 
+        $counter = ($current_page - 1) * $per_page + 1;
 
         foreach ($queue_items as $item) {
             $order_data = json_decode($item->order_data, true);
@@ -539,7 +538,6 @@ class EHX_WooCommerce_Integration
             echo "<td>";
             echo "#{$item->order_id} ";
             echo "</td>";
-            echo "<td>" . esc_html($item->order_title ?: 'N/A') . "</td>";
             echo "<td>";
             if (isset($order_data['name'])) {
                 echo "<strong>" . esc_html($order_data['name']) . "</strong><br>";
@@ -557,17 +555,18 @@ class EHX_WooCommerce_Integration
             echo "</td>";
             echo "<td>";
 
-            // Quick status toggle
-            echo "<form method='post' style='display: inline-block; margin-right: 5px;'>";
-            wp_nonce_field('ehx_wc_update_processed', 'ehx_wc_nonce');
-            echo "<input type='hidden' name='update_processed' value='1'>";
-            echo "<input type='hidden' name='queue_id' value='{$item->id}'>";
-            echo "<input type='hidden' name='processed' value='" . ($item->processed ? 0 : 1) . "'>";
-            $toggle_text = $item->processed ? 'Mark Pending' : 'Mark Processed';
-            $toggle_class = $item->processed ? 'button-secondary' : 'button-primary';
-            echo "<input type='submit' class='button {$toggle_class}' value='{$toggle_text}' style='font-size: 11px; padding: 2px 8px;'>";
-            echo "</form>";
-
+            if ($item->processed) {
+                // Quick status toggle
+                echo "<form method='post' style='display: inline-block; margin-right: 5px;'>";
+                wp_nonce_field('ehx_wc_update_processed', 'ehx_wc_nonce');
+                echo "<input type='hidden' name='update_processed' value='1'>";
+                echo "<input type='hidden' name='queue_id' value='{$item->id}'>";
+                echo "<input type='hidden' name='processed' value='" . ($item->processed ? 0 : 1) . "'>";
+                $toggle_text = $item->processed ? 'Mark Pending' : 'Mark Processed';
+                $toggle_class = $item->processed ? 'button-secondary' : 'button-primary';
+                echo "<input type='submit' class='button {$toggle_class}' value='{$toggle_text}' style='font-size: 11px; padding: 2px 8px; margin-bottom: 8px;'>";
+                echo "</form>";
+            }
             // View order data button
             echo "<button type='button' class='button button-small view-order-data' data-order-id='{$item->id}' style='font-size: 11px; padding: 2px 8px;'>View Data</button>";
 
@@ -675,10 +674,16 @@ class EHX_WooCommerce_Integration
             .queue-item-processed {
                 background-color: #f0f9ff;
             }
-
-            .queue-item-pending {
-                background-color: #fef2f2;
+            tr.queue-item-processed:nth-child(odd) {
+                background-color: #fff;
             }
+            tr.queue-item-processed:nth-child(odd):hover {
+                background-color: #f6f7f7;
+            }
+
+            /* .queue-item-pending {
+                background-color: #fef2f2;
+            } */
 
             .order-data-row td {
                 padding: 0 !important;
@@ -1019,10 +1024,10 @@ class EHX_WooCommerce_Integration
         $products_data = $response_data['data'];
 
         foreach ($products_data as $product_data) {
-              if (empty($product_data['express']) || $product_data['express'] !== true) {
-            $skipped_count++;
-            continue;
-        }
+            if (empty($product_data['express']) || $product_data['express'] !== true) {
+                $skipped_count++;
+                continue;
+            }
 
             $result = $this->create_or_update_product($product_data);
 
@@ -1037,13 +1042,13 @@ class EHX_WooCommerce_Integration
             }
         }
 
-    $message = sprintf(
-        'Sync completed. Created: %d, Updated: %d, Skipped: %d, Errors: %d',
-        $created_count,
-        $updated_count,
-        $skipped_count,
-        count($errors)
-    );
+        $message = sprintf(
+            'Sync completed. Created: %d, Updated: %d, Skipped: %d, Errors: %d',
+            $created_count,
+            $updated_count,
+            $skipped_count,
+            count($errors)
+        );
 
 
         if (!empty($errors)) {
