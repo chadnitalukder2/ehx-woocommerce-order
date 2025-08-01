@@ -195,17 +195,17 @@ class EHX_WooCommerce_Integration
      */
     public function quote_section_callback()
     {
-        echo __('Configure settings for sending order quotes to the API:', 'textdomain');
+        //  echo __('Configure settings for sending order quotes to the API:', 'textdomain');
     }
 
     public function sync_section_callback()
     {
-        echo __('Configure settings for syncing products from the API:', 'textdomain');
+        //  echo __('Configure settings for syncing products from the API:', 'textdomain');
     }
 
     public function auth_section_callback()
     {
-        echo __('Authentication settings used for both quote and product sync APIs:', 'textdomain');
+        //   echo __('Authentication settings used for both quote and product sync APIs:', 'textdomain');
     }
 
     /**
@@ -234,7 +234,7 @@ class EHX_WooCommerce_Integration
         $endpoint = get_option('ehx_wc_quote_endpoint', 'https://www.portal.immersivebrands.co.uk/api/quote');
     ?>
         <input type='url' name='ehx_wc_quote_endpoint' value='<?php echo esc_attr($endpoint); ?>' style='width: 400px;' required>
-        <p class="description">Enter the full URL of your quote API endpoint</p>
+        <!-- <p class="description">Enter the full URL of your quote API endpoint</p> -->
     <?php
     }
 
@@ -243,7 +243,7 @@ class EHX_WooCommerce_Integration
         $endpoint = get_option('ehx_wc_product_endpoint', '');
     ?>
         <input type='url' name='ehx_wc_product_endpoint' value='<?php echo esc_attr($endpoint); ?>' style='width: 400px;' required>
-        <p class="description">Enter the full URL of your product API endpoint</p>
+        <!-- <p class="description">Enter the full URL of your product API endpoint</p> -->
     <?php
     }
 
@@ -252,7 +252,7 @@ class EHX_WooCommerce_Integration
         $bearer_token = get_option('ehx_wc_bearer_token', '');
     ?>
         <input type='password' name='ehx_wc_bearer_token' value='<?php echo esc_attr($bearer_token); ?>' style='width: 500px;' required>
-        <p class="description">Enter your API Bearer Token (e.g., 5|XFQGvYYXQWK5QjhOvUqzHNVDVGfpilHcIbuatKBI)</p>
+        <!-- <p class="description">Enter your API Bearer Token (e.g., 5|XFQGvYYXQWK5QjhOvUqzHNVDVGfpilHcIbuatKBI)</p> -->
     <?php
     }
 
@@ -261,7 +261,7 @@ class EHX_WooCommerce_Integration
         $location_key = get_option('ehx_wc_location_key', '');
     ?>
         <input type='text' name='ehx_wc_location_key' value='<?php echo esc_attr($location_key); ?>' style='width: 300px;' required>
-        <p class="description">Enter your location identifier (e.g., store ID, branch code, location name)</p>
+        <!-- <p class="description">Enter your location identifier (e.g., store ID, branch code, location name)</p> -->
     <?php
     }
 
@@ -270,7 +270,7 @@ class EHX_WooCommerce_Integration
         $interval = get_option('ehx_wc_quote_interval', 30);
     ?>
         <input type='number' name='ehx_wc_quote_interval' value='<?php echo esc_attr($interval); ?>' min='1' max='1440' required>
-        <p class="description">How often to process order quotes (in minutes). Default: 30 minutes</p>
+        <!-- <p class="description">How often to process order quotes (in minutes). Default: 30 minutes</p> -->
     <?php
     }
 
@@ -308,12 +308,23 @@ class EHX_WooCommerce_Integration
                 ?>
             </form>
 
-            <div class="card" style="margin-top: 20px; max-width: 100%;">
-                <h2>Order Queue Status</h2>
-                <?php $this->display_queue_status(); ?>
-            </div>
+            <div class="card" style="border: none;  box-shadow: none; margin-top: 20px; max-width: 100%; padding: 20px;">
 
-            <div class="card" style="margin-top: 20px; max-width: 100%;">
+                <?php
+                // Schedule info
+                $next_order_processing = wp_next_scheduled('ehx_wc_process_orders');
+                $next_product_sync = wp_next_scheduled('ehx_wc_sync_products');
+
+                if ($next_order_processing || $next_product_sync) {
+                    echo "<div class='ehx-schedule-info' style='margin-bottom: 20px; padding: 12px; background: #fff8e3; border: 1px solid #fff8e3;'>";
+                    if ($next_order_processing) {
+                        echo "<p style='margin-top: 0;'><strong>Next Order Processing:</strong> " . date('Y-m-d H:i:s', $next_order_processing) . "</p>";
+                    }
+                    if ($next_product_sync) {
+                        echo "<p style='margin: 0px;'><strong>Next Product Sync:</strong> " . date('Y-m-d H:i:s', $next_product_sync) . "</p>";
+                    }
+                    echo "</div>";
+                } ?>
                 <h2>Manual Actions</h2>
                 <table class="form-table">
                     <tr>
@@ -337,6 +348,13 @@ class EHX_WooCommerce_Integration
                     </tr>
                 </table>
             </div>
+
+            <div class="card" style="border: none;  box-shadow: none; margin-top: 20px; max-width: 100%;">
+                <h2>Order Queue Status</h2>
+                <?php $this->display_queue_status(); ?>
+            </div>
+
+
         </div>
 
         <script>
@@ -429,7 +447,7 @@ class EHX_WooCommerce_Integration
                         "UPDATE $table_name SET processed = 0 WHERE id IN ($placeholders)",
                         ...$queue_ids
                     ));
-                    echo '<div class="notice notice-success is-dismissible"><p>Selected items marked as unprocessed!</p></div>';
+                    // echo '<div class="notice notice-success is-dismissible"><p>Selected items marked as unprocessed!</p></div>';
                 } elseif ($action === 'delete') {
                     $wpdb->query($wpdb->prepare(
                         "DELETE FROM $table_name WHERE id IN ($placeholders)",
@@ -463,31 +481,18 @@ class EHX_WooCommerce_Integration
 
         // Summary stats
         echo "<div class='ehx-queue-stats' style='display: flex; gap: 20px; margin-bottom: 20px;'>";
-        echo "<div class='stat-box' style='padding: 15px; background: #f9f9f9; border-left: 4px solid #0073aa;'>";
+        echo "<div class='stat-box' style='padding: 15px; background: #f9f9f9; border-left: 2px solid #0073aa;'>";
         echo "<strong>Total Orders:</strong> $total_items";
         echo "</div>";
-        echo "<div class='stat-box' style='padding: 15px; background: #f9f9f9; border-left: 4px solid #d63638;'>";
+        echo "<div class='stat-box' style='padding: 15px; background: #f9f9f9; border-left: 2px solid #d63638;'>";
         echo "<strong>Pending:</strong> $pending";
         echo "</div>";
-        echo "<div class='stat-box' style='padding: 15px; background: #f9f9f9; border-left: 4px solid #00a32a;'>";
+        echo "<div class='stat-box' style='padding: 15px; background: #f9f9f9; border-left: 2px solid #00a32a;'>";
         echo "<strong>Processed:</strong> $processed";
         echo "</div>";
         echo "</div>";
 
-        // Schedule info
-        $next_order_processing = wp_next_scheduled('ehx_wc_process_orders');
-        $next_product_sync = wp_next_scheduled('ehx_wc_sync_products');
 
-        if ($next_order_processing || $next_product_sync) {
-            echo "<div class='ehx-schedule-info' style='margin-bottom: 20px; padding: 10px; background: #fff3cd; border: 1px solid #ffeaa7;'>";
-            if ($next_order_processing) {
-                echo "<p><strong>Next Order Processing:</strong> " . date('Y-m-d H:i:s', $next_order_processing) . "</p>";
-            }
-            if ($next_product_sync) {
-                echo "<p><strong>Next Product Sync:</strong> " . date('Y-m-d H:i:s', $next_product_sync) . "</p>";
-            }
-            echo "</div>";
-        }
 
         if (empty($queue_items)) {
             echo "<p>No orders in queue.</p>";
@@ -501,7 +506,7 @@ class EHX_WooCommerce_Integration
         echo "<div class='alignleft actions bulkactions'>";
         echo "<select name='bulk_action'>";
         echo "<option value=''>Bulk Actions</option>";
-        echo "<option value='mark_processed'>Mark as Processed</option>";
+        // echo "<option value='mark_processed'>Mark as Processed</option>";
         echo "<option value='mark_unprocessed'>Mark as Unprocessed</option>";
         echo "<option value='delete'>Delete</option>";
         echo "</select>";
@@ -574,31 +579,21 @@ class EHX_WooCommerce_Integration
 
             // Hidden row for order data
             echo "<tr id='order-data-{$item->id}' class='order-data-row' style='display: none;'>";
-            echo "<td colspan='7'>";
-            echo "<div style='background: #f9f9f9; padding: 15px; margin: 5px 0; border-left: 4px solid #0073aa;'>";
+            echo "<td colspan='7' style='padding: 0;'>";
+            echo "<div style='background: #f9f9f9; border-bottom: 1px solid #ddd; border-top: 1px solid #ddd; padding: 15px; '>";
             echo "<h4>Order Data for Queue ID #{$item->id}</h4>";
 
             // Use $order_data directly (it's already decoded above)
             if ($order_data && is_array($order_data)) {
                 // Customer Information Section
-                echo "<div style='background: white; padding: 15px; margin-bottom: 15px; border: 1px solid #ddd; border-radius: 5px;'>";
-                echo "<h5 style='color: #0073aa; margin: 0 0 10px 0; padding-bottom: 5px; border-bottom: 2px solid #0073aa;'>Customer Information</h5>";
+                echo "<div style='background: white; padding: 15px; margin-bottom: 15px; border-radius: 5px;'>";
+                echo "<h5 style='color: #0073aa; font-size: 14px; margin: 0 0 10px 0; padding-bottom: 5px; border-bottom: 1px solid #0073aa;'>Customer Information</h5>";
                 echo "<table style='width: 100%; border-collapse: collapse;'>";
 
-                echo "<tr><td style='padding: 5px 10px; font-weight: bold; width: 150px;'>Name:</td><td style='padding: 5px 10px;'>" . esc_html($order_data['name'] ?? '') . "</td></tr>";
+                echo "<tr><td style='padding: 5px 10px ; font-weight: bold; width: 150px;'>Name:</td><td style='padding: 5px 10px;'>" . esc_html($order_data['name'] ?? '') . "</td></tr>";
                 echo "<tr style='background: #f5f5f5;'><td style='padding: 5px 10px; font-weight: bold;'>Email:</td><td style='padding: 5px 10px;'>" . esc_html($order_data['email'] ?? '') . "</td></tr>";
                 echo "<tr><td style='padding: 5px 10px; font-weight: bold;'>Phone:</td><td style='padding: 5px 10px;'>" . esc_html($order_data['telephone'] ?? '') . "</td></tr>";
                 echo "<tr style='background: #f5f5f5;'><td style='padding: 5px 10px; font-weight: bold;'>Company:</td><td style='padding: 5px 10px;'>" . esc_html($order_data['company']) . "</td></tr>";
-
-
-                echo "</table>";
-                echo "</div>";
-
-                // Order Information Section
-                echo "<div style='background: white; padding: 15px; margin-bottom: 15px; border: 1px solid #ddd; border-radius: 5px;'>";
-                echo "<h5 style='color: #0073aa; margin: 0 0 10px 0; padding-bottom: 5px; border-bottom: 2px solid #0073aa;'>Order Information</h5>";
-                echo "<table style='width: 100%; border-collapse: collapse;'>";
-
                 echo "<tr><td style='padding: 5px 10px; font-weight: bold; width: 150px;'>Reference:</td><td style='padding: 5px 10px;'>" . esc_html($order_data['referance'] ?? '') . "</td></tr>";
                 echo "<tr style='background: #f5f5f5;'><td style='padding: 5px 10px; font-weight: bold;'>Payment Method:</td><td style='padding: 5px 10px;'>" . esc_html($order_data['payment_method'] ?? '') . "</td></tr>";
                 echo "<tr><td style='padding: 5px 10px; font-weight: bold;'>Location Key:</td><td style='padding: 5px 10px;'>" . esc_html($order_data['location_key'] ?? '') . "</td></tr>";
@@ -606,15 +601,16 @@ class EHX_WooCommerce_Integration
                 echo "</table>";
                 echo "</div>";
 
+
                 // Items Section
                 if (!empty($order_data['items']) && is_array($order_data['items'])) {
-                    echo "<div style='background: white; padding: 15px; border: 1px solid #ddd; border-radius: 5px;'>";
-                    echo "<h5 style='color: #0073aa; margin: 0 0 10px 0; padding-bottom: 5px; border-bottom: 2px solid #0073aa;'>Order Items</h5>";
+                    echo "<div style='background: white; padding: 15px;  border-radius: 5px;'>";
+                    echo "<h5 style='color: #0073aa; font-size: 14px; margin: 0 0 10px 0; padding-bottom: 5px; border-bottom: 1px solid #0073aa;'>Order Items</h5>";
 
                     foreach ($order_data['items'] as $index => $orderItem) {
-                        echo "<div style='padding: 10px; margin-bottom: 10px; background: #f8f8f8; border-left: 3px solid #0073aa;'>";
-                        echo "<strong>Item " . ($index + 1) . ":</strong><br>";
-                        echo "<table style='width: 100%; border-collapse: collapse; margin-top: 5px;'>";
+                        echo "<div style='padding: 10px;  margin-bottom: 10px; '>";
+                        echo "<strong >Item " . ($index + 1) . ":</strong><br>";
+                        echo "<table style='width: 100%; border-collapse: collapse; margin-left: 25px; margin-top: 5px;'>";
 
                         echo "<tr><td style='padding: 3px 10px; font-weight: bold; width: 120px;'>Product:</td><td style='padding: 3px 10px;'>" . esc_html($orderItem['product'] ?? '') . "</td></tr>";
                         echo "<tr><td style='padding: 3px 10px; font-weight: bold;'>Quantity:</td><td style='padding: 3px 10px;'>" . esc_html($orderItem['quantity'] ?? '') . "</td></tr>";
@@ -740,7 +736,7 @@ class EHX_WooCommerce_Integration
             }
 
             .order-data-row td {
-                padding: 0 !important;
+                /* padding: 0 !important; */
             }
 
             .tablenav-pages .button {
