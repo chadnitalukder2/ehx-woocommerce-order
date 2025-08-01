@@ -404,353 +404,492 @@ class EHX_WooCommerce_Integration
      * Display queue status
      */
     //===========================start=================================
-    private function display_queue_status()
-    {
-        global $wpdb;
-        $table_name = $wpdb->prefix . 'ehx_wc_order_queue';
+ private function display_queue_status()
+{
+    global $wpdb;
+    $table_name = $wpdb->prefix . 'ehx_wc_order_queue';
 
-        // Handle AJAX update for processed status
-        if (isset($_POST['update_processed']) && wp_verify_nonce($_POST['ehx_wc_nonce'], 'ehx_wc_update_processed')) {
-            $queue_id = intval($_POST['queue_id']);
-            $processed = intval($_POST['processed']);
+    // Handle AJAX update for processed status
+    if (isset($_POST['update_processed']) && wp_verify_nonce($_POST['ehx_wc_nonce'], 'ehx_wc_update_processed')) {
+        $queue_id = intval($_POST['queue_id']);
+        $processed = intval($_POST['processed']);
 
-            $updated = $wpdb->update(
-                $table_name,
-                array('processed' => $processed),
-                array('id' => $queue_id),
-                array('%d'),
-                array('%d')
-            );
+        $updated = $wpdb->update(
+            $table_name,
+            array('processed' => $processed),
+            array('id' => $queue_id),
+            array('%d'),
+            array('%d')
+        );
 
-            if ($updated !== false) {
-                echo '<div class="notice notice-success is-dismissible"><p>Queue item updated successfully!</p></div>';
-            } else {
-                echo '<div class="notice notice-error is-dismissible"><p>Failed to update queue item.</p></div>';
+        if ($updated !== false) {
+            echo '<div class="notice notice-success is-dismissible"><p>Queue item updated successfully!</p></div>';
+        } else {
+            echo '<div class="notice notice-error is-dismissible"><p>Failed to update queue item.</p></div>';
+        }
+    }
+
+    // Handle bulk actions
+    if (isset($_POST['bulk_action']) && $_POST['bulk_action'] !== '' && !empty($_POST['queue_items'])) {
+        if (wp_verify_nonce($_POST['ehx_wc_bulk_nonce'], 'ehx_wc_bulk_action')) {
+            $action = sanitize_text_field($_POST['bulk_action']);
+            $queue_ids = array_map('intval', $_POST['queue_items']);
+            $placeholders = implode(',', array_fill(0, count($queue_ids), '%d'));
+
+            if ($action === 'mark_processed') {
+                $wpdb->query($wpdb->prepare(
+                    "UPDATE $table_name SET processed = 1 WHERE id IN ($placeholders)",
+                    ...$queue_ids
+                ));
+                echo '<div class="notice notice-success is-dismissible"><p>Selected items marked as processed!</p></div>';
+            } elseif ($action === 'mark_unprocessed') {
+                $wpdb->query($wpdb->prepare(
+                    "UPDATE $table_name SET processed = 0 WHERE id IN ($placeholders)",
+                    ...$queue_ids
+                ));
+                // echo '<div class="notice notice-success is-dismissible"><p>Selected items marked as unprocessed!</p></div>';
+            } elseif ($action === 'delete') {
+                $wpdb->query($wpdb->prepare(
+                    "DELETE FROM $table_name WHERE id IN ($placeholders)",
+                    ...$queue_ids
+                ));
+                echo '<div class="notice notice-success is-dismissible"><p>Selected items deleted!</p></div>';
             }
         }
+    }
 
-        // Handle bulk actions
-        if (isset($_POST['bulk_action']) && $_POST['bulk_action'] !== '' && !empty($_POST['queue_items'])) {
-            if (wp_verify_nonce($_POST['ehx_wc_bulk_nonce'], 'ehx_wc_bulk_action')) {
-                $action = sanitize_text_field($_POST['bulk_action']);
-                $queue_ids = array_map('intval', $_POST['queue_items']);
-                $placeholders = implode(',', array_fill(0, count($queue_ids), '%d'));
+    // Get search parameters
+    $search_term = isset($_GET['s']) ? sanitize_text_field($_GET['s']) : '';
+    $status_filter = isset($_GET['status_filter']) ? sanitize_text_field($_GET['status_filter']) : '';
 
-                if ($action === 'mark_processed') {
-                    $wpdb->query($wpdb->prepare(
-                        "UPDATE $table_name SET processed = 1 WHERE id IN ($placeholders)",
-                        ...$queue_ids
-                    ));
-                    echo '<div class="notice notice-success is-dismissible"><p>Selected items marked as processed!</p></div>';
-                } elseif ($action === 'mark_unprocessed') {
-                    $wpdb->query($wpdb->prepare(
-                        "UPDATE $table_name SET processed = 0 WHERE id IN ($placeholders)",
-                        ...$queue_ids
-                    ));
-                    // echo '<div class="notice notice-success is-dismissible"><p>Selected items marked as unprocessed!</p></div>';
-                } elseif ($action === 'delete') {
-                    $wpdb->query($wpdb->prepare(
-                        "DELETE FROM $table_name WHERE id IN ($placeholders)",
-                        ...$queue_ids
-                    ));
-                    echo '<div class="notice notice-success is-dismissible"><p>Selected items deleted!</p></div>';
-                }
-            }
+    // Build WHERE clause for search and filters
+    $where_conditions = array();
+    $where_values = array();
+
+    if (!empty($search_term)) {
+        $where_conditions[] = "(q.order_id LIKE %s OR q.order_data LIKE %s OR p.post_title LIKE %s)";
+        $search_like = '%' . $wpdb->esc_like($search_term) . '%';
+        $where_values[] = $search_like;
+        $where_values[] = $search_like;
+        $where_values[] = $search_like;
+    }
+
+    if ($status_filter !== '') {
+        $where_conditions[] = "q.processed = %d";
+        $where_values[] = intval($status_filter);
+    }
+
+    $where_clause = '';
+    if (!empty($where_conditions)) {
+        $where_clause = 'WHERE ' . implode(' AND ', $where_conditions);
+    }
+
+    // Get queue data with pagination and search
+    $per_page = 3;
+    $current_page = isset($_GET['queue_page']) ? max(1, intval($_GET['queue_page'])) : 1;
+    $offset = ($current_page - 1) * $per_page;
+
+    // Count total items with search
+    $count_sql = "SELECT COUNT(*) FROM $table_name q LEFT JOIN {$wpdb->posts} p ON q.order_id = p.ID $where_clause";
+    if (!empty($where_values)) {
+        $total_items = $wpdb->get_var($wpdb->prepare($count_sql, ...$where_values));
+    } else {
+        $total_items = $wpdb->get_var($count_sql);
+    }
+    $total_pages = ceil($total_items / $per_page);
+
+    // Get queue items with search
+    $query_sql = "SELECT q.*, p.post_title as order_title 
+                  FROM $table_name q 
+                  LEFT JOIN {$wpdb->posts} p ON q.order_id = p.ID 
+                  $where_clause
+                  ORDER BY q.created_at DESC 
+                  LIMIT %d OFFSET %d";
+    
+    $query_values = array_merge($where_values, array($per_page, $offset));
+    $queue_items = $wpdb->get_results($wpdb->prepare($query_sql, ...$query_values));
+
+    // Get counts for stats (without search filter)
+    $pending = $wpdb->get_var("SELECT COUNT(*) FROM $table_name WHERE processed = 0");
+    $processed = $wpdb->get_var("SELECT COUNT(*) FROM $table_name WHERE processed = 1");
+    $total_all = $wpdb->get_var("SELECT COUNT(*) FROM $table_name");
+
+    // Summary stats
+    echo "<div class='ehx-queue-stats' style='display: flex; gap: 20px; margin-bottom: 20px;'>";
+    echo "<div class='stat-box' style='padding: 15px; background: #f9f9f9; border-left: 2px solid #0073aa;'>";
+    echo "<strong>Total Orders:</strong> $total_all";
+    echo "</div>";
+    echo "<div class='stat-box' style='padding: 15px; background: #f9f9f9; border-left: 2px solid #d63638;'>";
+    echo "<strong>Pending:</strong> $pending";
+    echo "</div>";
+    echo "<div class='stat-box' style='padding: 15px; background: #f9f9f9; border-left: 2px solid #00a32a;'>";
+    echo "<strong>Processed:</strong> $processed";
+    echo "</div>";
+    if (!empty($search_term) || $status_filter !== '') {
+        echo "<div class='stat-box' style='padding: 15px; background: #fff3cd; border-left: 2px solid #856404;'>";
+        echo "<strong>Search Results:</strong> $total_items";
+        echo "</div>";
+    }
+    echo "</div>";
+
+    // Search and Filter Form
+    echo "<div class='ehx-search-container' style='background: #f9f9f9; padding: 15px; margin-bottom: 20px; border-radius: 5px;'>";
+    echo "<form method='get' style='display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap;'>";
+    
+    // Preserve other GET parameters
+    foreach ($_GET as $key => $value) {
+        if (!in_array($key, ['s', 'status_filter', 'queue_page'])) {
+            echo "<input type='hidden' name='" . esc_attr($key) . "' value='" . esc_attr($value) . "'>";
         }
+    }
+    
+    echo "<div style='flex: 1; min-width: 200px;'>";
+    echo "<label for='search-input' style='display: block; font-weight: bold; margin-bottom: 5px;'>Search:</label>";
+    echo "<input type='text' id='search-input' name='s' value='" . esc_attr($search_term) . "' placeholder='Search by Order ID, Customer Name, Email, Company...' style='width: 100%; padding: 8px;'>";
+    echo "</div>";
+    
+    echo "<div style='min-width: 150px;'>";
+    echo "<label for='status-filter' style='display: block; font-weight: bold; margin-bottom: 5px;'>Status:</label>";
+    echo "<select name='status_filter' id='status-filter' style='width: 100%; padding: 8px;'>";
+    echo "<option value=''" . ($status_filter === '' ? ' selected' : '') . ">All Statuses</option>";
+    echo "<option value='0'" . ($status_filter === '0' ? ' selected' : '') . ">Pending</option>";
+    echo "<option value='1'" . ($status_filter === '1' ? ' selected' : '') . ">Processed</option>";
+    echo "</select>";
+    echo "</div>";
+    
+    echo "<div>";
+    echo "<button type='submit' class='button button-primary' style='padding: 8px 15px; height: auto; margin-top: 20px;'>Search</button>";
+    if (!empty($search_term) || $status_filter !== '') {
+        $clear_url = remove_query_arg(['s', 'status_filter', 'queue_page']);
+        echo "<a href='" . esc_url($clear_url) . "' class='button' style='padding: 8px 15px; height: auto; margin-left: 5px; margin-top: 20px;'>Clear</a>";
+    }
+    echo "</div>";
+    
+    echo "</form>";
+    echo "</div>";
 
-        // Get queue data with pagination
-        $per_page = 3;
-        $current_page = isset($_GET['queue_page']) ? max(1, intval($_GET['queue_page'])) : 1;
-        $offset = ($current_page - 1) * $per_page;
-
-        $total_items = $wpdb->get_var("SELECT COUNT(*) FROM $table_name");
-        $total_pages = ceil($total_items / $per_page);
-
-        $queue_items = $wpdb->get_results($wpdb->prepare(
-            "SELECT q.*, p.post_title as order_title 
-     FROM $table_name q 
-     LEFT JOIN {$wpdb->posts} p ON q.order_id = p.ID 
-     ORDER BY q.created_at DESC 
-     LIMIT %d OFFSET %d",
-            $per_page,
-            $offset
-        ));
-
-        $pending = $wpdb->get_var("SELECT COUNT(*) FROM $table_name WHERE processed = 0");
-        $processed = $wpdb->get_var("SELECT COUNT(*) FROM $table_name WHERE processed = 1");
-
-        // Summary stats
-        echo "<div class='ehx-queue-stats' style='display: flex; gap: 20px; margin-bottom: 20px;'>";
-        echo "<div class='stat-box' style='padding: 15px; background: #f9f9f9; border-left: 2px solid #0073aa;'>";
-        echo "<strong>Total Orders:</strong> $total_items";
-        echo "</div>";
-        echo "<div class='stat-box' style='padding: 15px; background: #f9f9f9; border-left: 2px solid #d63638;'>";
-        echo "<strong>Pending:</strong> $pending";
-        echo "</div>";
-        echo "<div class='stat-box' style='padding: 15px; background: #f9f9f9; border-left: 2px solid #00a32a;'>";
-        echo "<strong>Processed:</strong> $processed";
-        echo "</div>";
-        echo "</div>";
-
-
-
-        if (empty($queue_items)) {
+    if (empty($queue_items)) {
+        if (!empty($search_term) || $status_filter !== '') {
+            echo "<p>No orders found matching your search criteria.</p>";
+        } else {
             echo "<p>No orders in queue.</p>";
-            return;
         }
+        return;
+    }
 
-        // Bulk actions form
-        echo "<form method='post' id='ehx-queue-form'>";
-        wp_nonce_field('ehx_wc_bulk_action', 'ehx_wc_bulk_nonce');
-        echo "<div class='tablenav top' style='margin-bottom: 10px;'>";
-        echo "<div class='alignleft actions bulkactions'>";
-        echo "<select name='bulk_action'>";
-        echo "<option value=''>Bulk Actions</option>";
-        // echo "<option value='mark_processed'>Mark as Processed</option>";
-        echo "<option value='mark_unprocessed'>Mark as Unprocessed</option>";
-        echo "<option value='delete'>Delete</option>";
-        echo "</select>";
-        echo "<input type='submit' class='button action' value='Apply'>";
+    // Display search info
+    if (!empty($search_term) || $status_filter !== '') {
+        echo "<div class='search-info' style='background: #e7f3ff; padding: 10px; margin-bottom: 15px; border-left: 4px solid #0073aa;'>";
+        $info_parts = array();
+        if (!empty($search_term)) {
+            $info_parts[] = "Search: '<strong>" . esc_html($search_term) . "</strong>'";
+        }
+        if ($status_filter !== '') {
+            $status_text = $status_filter === '1' ? 'Processed' : 'Pending';
+            $info_parts[] = "Status: <strong>$status_text</strong>";
+        }
+        echo "Showing results for " . implode(' | ', $info_parts) . " ($total_items items found)";
         echo "</div>";
-        echo "</div>";
+    }
 
-        // Queue table
-        echo "<table class='wp-list-table widefat fixed striped' style='margin-top: 10px;'>";
-        echo "<thead>";
-        echo "<tr>";
-        echo "<td class='manage-column column-cb check-column'><input type='checkbox' id='cb-select-all'></td>";
-        echo "<th class='manage-column'>ID</th>";
-        echo "<th class='manage-column'>Order ID</th>";
-        echo "<th class='manage-column'>Customer Info</th>";
-        echo "<th class='manage-column'>Created</th>";
-        echo "<th class='manage-column'>Status</th>";
-        echo "<th class='manage-column'>Actions</th>";
+    // Bulk actions form
+    echo "<form method='post' id='ehx-queue-form'>";
+    wp_nonce_field('ehx_wc_bulk_action', 'ehx_wc_bulk_nonce');
+    echo "<div class='tablenav top' style='margin-bottom: 10px;'>";
+    echo "<div class='alignleft actions bulkactions'>";
+    echo "<select name='bulk_action'>";
+    echo "<option value=''>Bulk Actions</option>";
+    // echo "<option value='mark_processed'>Mark as Processed</option>";
+    echo "<option value='mark_unprocessed'>Mark as Unprocessed</option>";
+    echo "<option value='delete'>Delete</option>";
+    echo "</select>";
+    echo "<input type='submit' class='button action' value='Apply'>";
+    echo "</div>";
+    echo "</div>";
+
+    // Queue table
+    echo "<table class='wp-list-table widefat fixed striped' style='margin-top: 10px;'>";
+    echo "<thead>";
+    echo "<tr>";
+    echo "<td class='manage-column column-cb check-column'><input type='checkbox' id='cb-select-all'></td>";
+    echo "<th class='manage-column'>ID</th>";
+    echo "<th class='manage-column'>Order ID</th>";
+    echo "<th class='manage-column'>Customer Info</th>";
+    echo "<th class='manage-column'>Created</th>";
+    echo "<th class='manage-column'>Status</th>";
+    echo "<th class='manage-column'>Actions</th>";
+    echo "</tr>";
+    echo "</thead>";
+    echo "<tbody>";
+    $counter = ($current_page - 1) * $per_page + 1;
+
+    foreach ($queue_items as $item) {
+        $order_data = json_decode($item->order_data, true);
+        $status_class = $item->processed ? 'processed' : 'pending';
+        $status_text = $item->processed ? 'Processed' : 'Pending';
+        $status_color = $item->processed ? '#00a32a' : '#d63638';
+
+        echo "<tr class='queue-item-{$status_class}'>";
+        echo "<th class='check-column'><input type='checkbox' name='queue_items[]' value='{$item->id}'></th>";
+        echo "<td><strong>" . $counter . "</strong></td>";
+        echo "<td>";
+        echo "#{$item->order_id} ";
+        echo "</td>";
+        echo "<td>";
+        if (isset($order_data['name'])) {
+            echo "<strong>" . esc_html($order_data['name']) . "</strong><br>";
+            echo "<small>" . esc_html($order_data['email'] ?? '') . "</small>";
+            if (!empty($order_data['company'])) {
+                echo "<br><small>" . esc_html($order_data['company']) . "</small>";
+            }
+        }
+        echo "</td>";
+        echo "<td>";
+        echo "<small>" . date('Y-m-d<\b\\r>H:i:s', strtotime($item->created_at)) . "</small>";
+        echo "</td>";
+        echo "<td>";
+        echo "<span style='color: {$status_color}; font-weight: bold;'>{$status_text}</span>";
+        echo "</td>";
+        echo "<td>";
+
+        if ($item->processed) {
+            // Quick status toggle
+            echo "<form method='post' style='display: inline-block; margin-right: 5px;'>";
+            wp_nonce_field('ehx_wc_update_processed', 'ehx_wc_nonce');
+            echo "<input type='hidden' name='update_processed' value='1'>";
+            echo "<input type='hidden' name='queue_id' value='{$item->id}'>";
+            echo "<input type='hidden' name='processed' value='" . ($item->processed ? 0 : 1) . "'>";
+            $toggle_text = $item->processed ? 'Mark Pending' : 'Mark Processed';
+            $toggle_class = $item->processed ? 'button-secondary' : 'button-primary';
+            echo "<input type='submit' class='button {$toggle_class}' value='{$toggle_text}' style='font-size: 11px; padding: 2px 8px; margin-bottom: 8px;'>";
+            echo "</form>";
+        }
+        // View order data button
+        echo "<button type='button' class='button button-small view-order-data' data-order-id='{$item->id}' style='font-size: 11px; padding: 2px 8px;'>View Data</button>";
+
+        echo "</td>";
         echo "</tr>";
-        echo "</thead>";
-        echo "<tbody>";
-        $counter = ($current_page - 1) * $per_page + 1;
 
-        foreach ($queue_items as $item) {
-            $order_data = json_decode($item->order_data, true);
-            $status_class = $item->processed ? 'processed' : 'pending';
-            $status_text = $item->processed ? 'Processed' : 'Pending';
-            $status_color = $item->processed ? '#00a32a' : '#d63638';
+        // Hidden row for order data
+        echo "<tr id='order-data-{$item->id}' class='order-data-row' style='display: none;'>";
+        echo "<td colspan='7' style='padding: 0;'>";
+        echo "<div style='background: #f9f9f9; border-bottom: 1px solid #ddd; border-top: 1px solid #ddd; padding: 15px; '>";
+        echo "<h4>Order Data for Queue ID #{$item->id}</h4>";
 
-            echo "<tr class='queue-item-{$status_class}'>";
-            echo "<th class='check-column'><input type='checkbox' name='queue_items[]' value='{$item->id}'></th>";
-            echo "<td><strong>" . $counter . "</strong></td>";
-            echo "<td>";
-            echo "#{$item->order_id} ";
-            echo "</td>";
-            echo "<td>";
-            if (isset($order_data['name'])) {
-                echo "<strong>" . esc_html($order_data['name']) . "</strong><br>";
-                echo "<small>" . esc_html($order_data['email'] ?? '') . "</small>";
-                if (!empty($order_data['company'])) {
-                    echo "<br><small>" . esc_html($order_data['company']) . "</small>";
-                }
-            }
-            echo "</td>";
-            echo "<td>";
-            echo "<small>" . date('Y-m-d<\b\\r>H:i:s', strtotime($item->created_at)) . "</small>";
-            echo "</td>";
-            echo "<td>";
-            echo "<span style='color: {$status_color}; font-weight: bold;'>{$status_text}</span>";
-            echo "</td>";
-            echo "<td>";
+        // Use $order_data directly (it's already decoded above)
+        if ($order_data && is_array($order_data)) {
+            // Customer Information Section
+            echo "<div style='background: white; padding: 15px; margin-bottom: 15px; border-radius: 5px;'>";
+            echo "<h5 style='color: #0073aa; font-size: 14px; margin: 0 0 10px 0; padding-bottom: 5px; border-bottom: 1px solid #0073aa;'>Customer Information</h5>";
+            echo "<table style='width: 100%; border-collapse: collapse;'>";
 
-            if ($item->processed) {
-                // Quick status toggle
-                echo "<form method='post' style='display: inline-block; margin-right: 5px;'>";
-                wp_nonce_field('ehx_wc_update_processed', 'ehx_wc_nonce');
-                echo "<input type='hidden' name='update_processed' value='1'>";
-                echo "<input type='hidden' name='queue_id' value='{$item->id}'>";
-                echo "<input type='hidden' name='processed' value='" . ($item->processed ? 0 : 1) . "'>";
-                $toggle_text = $item->processed ? 'Mark Pending' : 'Mark Processed';
-                $toggle_class = $item->processed ? 'button-secondary' : 'button-primary';
-                echo "<input type='submit' class='button {$toggle_class}' value='{$toggle_text}' style='font-size: 11px; padding: 2px 8px; margin-bottom: 8px;'>";
-                echo "</form>";
-            }
-            // View order data button
-            echo "<button type='button' class='button button-small view-order-data' data-order-id='{$item->id}' style='font-size: 11px; padding: 2px 8px;'>View Data</button>";
+            echo "<tr><td style='padding: 5px 10px ; font-weight: bold; width: 150px;'>Name:</td><td style='padding: 5px 10px;'>" . esc_html($order_data['name'] ?? '') . "</td></tr>";
+            echo "<tr style='background: #f5f5f5;'><td style='padding: 5px 10px; font-weight: bold;'>Email:</td><td style='padding: 5px 10px;'>" . esc_html($order_data['email'] ?? '') . "</td></tr>";
+            echo "<tr><td style='padding: 5px 10px; font-weight: bold;'>Phone:</td><td style='padding: 5px 10px;'>" . esc_html($order_data['telephone'] ?? '') . "</td></tr>";
+            echo "<tr style='background: #f5f5f5;'><td style='padding: 5px 10px; font-weight: bold;'>Company:</td><td style='padding: 5px 10px;'>" . esc_html($order_data['company']) . "</td></tr>";
+            echo "<tr><td style='padding: 5px 10px; font-weight: bold; width: 150px;'>Reference:</td><td style='padding: 5px 10px;'>" . esc_html($order_data['referance'] ?? '') . "</td></tr>";
+            echo "<tr style='background: #f5f5f5;'><td style='padding: 5px 10px; font-weight: bold;'>Payment Method:</td><td style='padding: 5px 10px;'>" . esc_html($order_data['payment_method'] ?? '') . "</td></tr>";
+            echo "<tr><td style='padding: 5px 10px; font-weight: bold;'>Location Key:</td><td style='padding: 5px 10px;'>" . esc_html($order_data['location_key'] ?? '') . "</td></tr>";
 
-            echo "</td>";
-            echo "</tr>";
+            echo "</table>";
+            echo "</div>";
 
-            // Hidden row for order data
-            echo "<tr id='order-data-{$item->id}' class='order-data-row' style='display: none;'>";
-            echo "<td colspan='7' style='padding: 0;'>";
-            echo "<div style='background: #f9f9f9; border-bottom: 1px solid #ddd; border-top: 1px solid #ddd; padding: 15px; '>";
-            echo "<h4>Order Data for Queue ID #{$item->id}</h4>";
+            // Items Section
+            if (!empty($order_data['items']) && is_array($order_data['items'])) {
+                echo "<div style='background: white; padding: 15px;  border-radius: 5px;'>";
+                echo "<h5 style='color: #0073aa; font-size: 14px; margin: 0 0 10px 0; padding-bottom: 5px; border-bottom: 1px solid #0073aa;'>Order Items</h5>";
 
-            // Use $order_data directly (it's already decoded above)
-            if ($order_data && is_array($order_data)) {
-                // Customer Information Section
-                echo "<div style='background: white; padding: 15px; margin-bottom: 15px; border-radius: 5px;'>";
-                echo "<h5 style='color: #0073aa; font-size: 14px; margin: 0 0 10px 0; padding-bottom: 5px; border-bottom: 1px solid #0073aa;'>Customer Information</h5>";
-                echo "<table style='width: 100%; border-collapse: collapse;'>";
+                foreach ($order_data['items'] as $index => $orderItem) {
+                    echo "<div style='padding: 10px;  margin-bottom: 10px; '>";
+                    echo "<strong >Item " . ($index + 1) . ":</strong><br>";
+                    echo "<table style='width: 100%; border-collapse: collapse; margin-left: 25px; margin-top: 5px;'>";
 
-                echo "<tr><td style='padding: 5px 10px ; font-weight: bold; width: 150px;'>Name:</td><td style='padding: 5px 10px;'>" . esc_html($order_data['name'] ?? '') . "</td></tr>";
-                echo "<tr style='background: #f5f5f5;'><td style='padding: 5px 10px; font-weight: bold;'>Email:</td><td style='padding: 5px 10px;'>" . esc_html($order_data['email'] ?? '') . "</td></tr>";
-                echo "<tr><td style='padding: 5px 10px; font-weight: bold;'>Phone:</td><td style='padding: 5px 10px;'>" . esc_html($order_data['telephone'] ?? '') . "</td></tr>";
-                echo "<tr style='background: #f5f5f5;'><td style='padding: 5px 10px; font-weight: bold;'>Company:</td><td style='padding: 5px 10px;'>" . esc_html($order_data['company']) . "</td></tr>";
-                echo "<tr><td style='padding: 5px 10px; font-weight: bold; width: 150px;'>Reference:</td><td style='padding: 5px 10px;'>" . esc_html($order_data['referance'] ?? '') . "</td></tr>";
-                echo "<tr style='background: #f5f5f5;'><td style='padding: 5px 10px; font-weight: bold;'>Payment Method:</td><td style='padding: 5px 10px;'>" . esc_html($order_data['payment_method'] ?? '') . "</td></tr>";
-                echo "<tr><td style='padding: 5px 10px; font-weight: bold;'>Location Key:</td><td style='padding: 5px 10px;'>" . esc_html($order_data['location_key'] ?? '') . "</td></tr>";
+                    echo "<tr><td style='padding: 3px 10px; font-weight: bold; width: 120px;'>Product:</td><td style='padding: 3px 10px;'>" . esc_html($orderItem['product'] ?? '') . "</td></tr>";
+                    echo "<tr><td style='padding: 3px 10px; font-weight: bold;'>Quantity:</td><td style='padding: 3px 10px;'>" . esc_html($orderItem['quantity'] ?? '') . "</td></tr>";
+                    echo "<tr><td style='padding: 3px 10px; font-weight: bold;'>Setup Price:</td><td style='padding: 3px 10px;'>$" . esc_html($orderItem['setup_price'] ?? '0') . "</td></tr>";
+                    echo "<tr><td style='padding: 3px 10px; font-weight: bold;'>Color:</td><td style='padding: 3px 10px;'>" . esc_html($orderItem['color']) . "</td></tr>";
+                    echo "<tr><td style='padding: 3px 10px; font-weight: bold;'>Quantity Color:</td><td style='padding: 3px 10px;'>" . esc_html($orderItem['quantity_color']) . "</td></tr>";
+                    echo "<tr><td style='padding: 3px 10px; font-weight: bold;'>Size:</td><td style='padding: 3px 10px;'>" . esc_html($orderItem['size']) . "</td></tr>";
+                    echo "<tr><td style='padding: 3px 10px; font-weight: bold;'>Fitting:</td><td style='padding: 3px 10px;'>" . esc_html($orderItem['fitting']) . "</td></tr>";
 
-                echo "</table>";
-                echo "</div>";
-
-
-                // Items Section
-                if (!empty($order_data['items']) && is_array($order_data['items'])) {
-                    echo "<div style='background: white; padding: 15px;  border-radius: 5px;'>";
-                    echo "<h5 style='color: #0073aa; font-size: 14px; margin: 0 0 10px 0; padding-bottom: 5px; border-bottom: 1px solid #0073aa;'>Order Items</h5>";
-
-                    foreach ($order_data['items'] as $index => $orderItem) {
-                        echo "<div style='padding: 10px;  margin-bottom: 10px; '>";
-                        echo "<strong >Item " . ($index + 1) . ":</strong><br>";
-                        echo "<table style='width: 100%; border-collapse: collapse; margin-left: 25px; margin-top: 5px;'>";
-
-                        echo "<tr><td style='padding: 3px 10px; font-weight: bold; width: 120px;'>Product:</td><td style='padding: 3px 10px;'>" . esc_html($orderItem['product'] ?? '') . "</td></tr>";
-                        echo "<tr><td style='padding: 3px 10px; font-weight: bold;'>Quantity:</td><td style='padding: 3px 10px;'>" . esc_html($orderItem['quantity'] ?? '') . "</td></tr>";
-                        echo "<tr><td style='padding: 3px 10px; font-weight: bold;'>Setup Price:</td><td style='padding: 3px 10px;'>$" . esc_html($orderItem['setup_price'] ?? '0') . "</td></tr>";
-                        echo "<tr><td style='padding: 3px 10px; font-weight: bold;'>Color:</td><td style='padding: 3px 10px;'>" . esc_html($orderItem['color']) . "</td></tr>";
-                        echo "<tr><td style='padding: 3px 10px; font-weight: bold;'>Quantity Color:</td><td style='padding: 3px 10px;'>" . esc_html($orderItem['quantity_color']) . "</td></tr>";
-                        echo "<tr><td style='padding: 3px 10px; font-weight: bold;'>Size:</td><td style='padding: 3px 10px;'>" . esc_html($orderItem['size']) . "</td></tr>";
-                        echo "<tr><td style='padding: 3px 10px; font-weight: bold;'>Fitting:</td><td style='padding: 3px 10px;'>" . esc_html($orderItem['fitting']) . "</td></tr>";
-
-                        echo "</table>";
-                        echo "</div>";
-                    }
+                    echo "</table>";
                     echo "</div>";
                 }
+                echo "</div>";
+            }
+        } else {
+            // Fallback to raw JSON if parsing fails
+            echo "<pre style='background: white; padding: 10px; border: 1px solid #ddd; overflow-x: auto; max-height: 300px;'>";
+            echo esc_html(json_encode(json_decode($item->order_data), JSON_PRETTY_PRINT));
+            echo "</pre>";
+        }
+
+        echo "</div>";
+        echo "</td>";
+        echo "</tr>";
+
+        $counter++;
+    }
+
+    echo "</tbody>";
+    echo "</table>";
+    echo "</form>";
+
+    // Pagination
+    if ($total_pages > 1) {
+        echo "<div class='tablenav bottom'>";
+        echo "<div class='tablenav-pages'>";
+        echo "<span class='displaying-num'>" . sprintf('%d items', $total_items) . "</span>";
+
+        // Build pagination URLs with search parameters
+        $pagination_args = array();
+        if (!empty($search_term)) {
+            $pagination_args['s'] = $search_term;
+        }
+        if ($status_filter !== '') {
+            $pagination_args['status_filter'] = $status_filter;
+        }
+
+        if ($current_page > 1) {
+            $prev_args = array_merge($pagination_args, array('queue_page' => $current_page - 1));
+            echo "<a class='button' href='" . esc_url(add_query_arg($prev_args)) . "'>&laquo; Previous</a> ";
+        }
+
+        // Show page numbers
+        for ($i = max(1, $current_page - 2); $i <= min($total_pages, $current_page + 2); $i++) {
+            if ($i == $current_page) {
+                echo "<span class='button button-primary'>{$i}</span> ";
             } else {
-                // Fallback to raw JSON if parsing fails
-                echo "<pre style='background: white; padding: 10px; border: 1px solid #ddd; overflow-x: auto; max-height: 300px;'>";
-                echo esc_html(json_encode(json_decode($item->order_data), JSON_PRETTY_PRINT));
-                echo "</pre>";
+                $page_args = array_merge($pagination_args, array('queue_page' => $i));
+                echo "<a class='button' href='" . esc_url(add_query_arg($page_args)) . "'>{$i}</a> ";
             }
-
-            echo "</div>";
-            echo "</td>";
-            echo "</tr>";
-
-            $counter++;
         }
 
-        echo "</tbody>";
-        echo "</table>";
-        echo "</form>";
+        if ($current_page < $total_pages) {
+            $next_args = array_merge($pagination_args, array('queue_page' => $current_page + 1));
+            echo "<a class='button' href='" . esc_url(add_query_arg($next_args)) . "'>Next &raquo;</a>";
+        }
 
-        // Pagination
-        if ($total_pages > 1) {
-            echo "<div class='tablenav bottom'>";
-            echo "<div class='tablenav-pages'>";
-            echo "<span class='displaying-num'>" . sprintf('%d items', $total_items) . "</span>";
+        echo "</div>";
+        echo "</div>";
+    }
 
-            $base_url = add_query_arg('queue_page', '');
+    // JavaScript for interactions
+    ?>
+    <script>
+        jQuery(document).ready(function($) {
+            // Select all checkbox
+            $('#cb-select-all').change(function() {
+                $('input[name="queue_items[]"]').prop('checked', this.checked);
+            });
 
-            if ($current_page > 1) {
-                echo "<a class='button' href='" . esc_url(add_query_arg('queue_page', $current_page - 1)) . "'>&laquo; Previous</a> ";
-            }
+            // Individual checkboxes
+            $('input[name="queue_items[]"]').change(function() {
+                var total = $('input[name="queue_items[]"]').length;
+                var checked = $('input[name="queue_items[]"]:checked').length;
+                $('#cb-select-all').prop('checked', total === checked);
+            });
 
-            // Show page numbers
-            for ($i = max(1, $current_page - 2); $i <= min($total_pages, $current_page + 2); $i++) {
-                if ($i == $current_page) {
-                    echo "<span class='button button-primary'>{$i}</span> ";
+            // View order data toggle
+            $('.view-order-data').click(function() {
+                var orderId = $(this).data('order-id');
+                var dataRow = $('#order-data-' + orderId);
+
+                if (dataRow.is(':visible')) {
+                    dataRow.hide();
+                    $(this).text('View Data');
                 } else {
-                    echo "<a class='button' href='" . esc_url(add_query_arg('queue_page', $i)) . "'>{$i}</a> ";
+                    dataRow.show();
+                    $(this).text('Hide Data');
                 }
-            }
+            });
 
-            if ($current_page < $total_pages) {
-                echo "<a class='button' href='" . esc_url(add_query_arg('queue_page', $current_page + 1)) . "'>Next &raquo;</a>";
-            }
-
-            echo "</div>";
-            echo "</div>";
-        }
-
-        // JavaScript for interactions
-        ?>
-        <script>
-            jQuery(document).ready(function($) {
-                // Select all checkbox
-                $('#cb-select-all').change(function() {
-                    $('input[name="queue_items[]"]').prop('checked', this.checked);
-                });
-
-                // Individual checkboxes
-                $('input[name="queue_items[]"]').change(function() {
-                    var total = $('input[name="queue_items[]"]').length;
-                    var checked = $('input[name="queue_items[]"]:checked').length;
-                    $('#cb-select-all').prop('checked', total === checked);
-                });
-
-                // View order data toggle
-                $('.view-order-data').click(function() {
-                    var orderId = $(this).data('order-id');
-                    var dataRow = $('#order-data-' + orderId);
-
-                    if (dataRow.is(':visible')) {
-                        dataRow.hide();
-                        $(this).text('View Data');
-                    } else {
-                        dataRow.show();
-                        $(this).text('Hide Data');
-                    }
-                });
-
-                // Confirm bulk delete
-                $('#ehx-queue-form').submit(function(e) {
-                    var action = $('select[name="bulk_action"]').val();
-                    if (action === 'delete') {
-                        var checkedItems = $('input[name="queue_items[]"]:checked').length;
-                        if (checkedItems > 0) {
-                            if (!confirm('Are you sure you want to delete ' + checkedItems + ' selected item(s)? This action cannot be undone.')) {
-                                e.preventDefault();
-                            }
+            // Confirm bulk delete
+            $('#ehx-queue-form').submit(function(e) {
+                var action = $('select[name="bulk_action"]').val();
+                if (action === 'delete') {
+                    var checkedItems = $('input[name="queue_items[]"]:checked').length;
+                    if (checkedItems > 0) {
+                        if (!confirm('Are you sure you want to delete ' + checkedItems + ' selected item(s)? This action cannot be undone.')) {
+                            e.preventDefault();
                         }
                     }
-                });
+                }
             });
-        </script>
 
-        <style>
-            .ehx-queue-stats .stat-box {
-                min-width: 120px;
-                text-align: center;
-            }
+            // Search functionality enhancements
+            $('#search-input').on('keypress', function(e) {
+                if (e.which === 13) { // Enter key
+                    $(this).closest('form').submit();
+                }
+            });
 
-            .queue-item-processed {
-                background-color: #f0f9ff;
-            }
+            // Auto-focus search input if there's a search term
+            <?php if (!empty($search_term)): ?>
+            $('#search-input').focus().get(0).setSelectionRange(<?php echo strlen($search_term); ?>, <?php echo strlen($search_term); ?>);
+            <?php endif; ?>
+        });
+    </script>
 
-            tr.queue-item-processed:nth-child(odd) {
-                background-color: #fff;
-            }
+    <style>
+        .ehx-queue-stats .stat-box {
+            min-width: 120px;
+            text-align: center;
+        }
 
-            tr.queue-item-processed:nth-child(odd):hover {
-                background-color: #f6f7f7;
-            }
+        .queue-item-processed {
+            background-color: #f0f9ff;
+        }
 
-            .order-data-row td {
-                /* padding: 0 !important; */
-            }
+        tr.queue-item-processed:nth-child(odd) {
+            background-color: #fff;
+        }
 
-            .tablenav-pages .button {
-                margin-right: 5px;
-                text-decoration: none;
-            }
+        tr.queue-item-processed:nth-child(odd):hover {
+            background-color: #f6f7f7;
+        }
 
-            .wp-list-table th,
-            .wp-list-table td {
-                vertical-align: top;
+        .order-data-row td {
+            /* padding: 0 !important; */
+        }
+
+        .tablenav-pages .button {
+            margin-right: 5px;
+            text-decoration: none;
+        }
+
+        .wp-list-table th,
+        .wp-list-table td {
+            vertical-align: top;
+        }
+
+        .ehx-search-container {
+            border: 1px solid #ddd;
+        }
+
+        .ehx-search-container input[type="text"],
+        .ehx-search-container select {
+            border: 1px solid #ddd;
+            border-radius: 3px;
+        }
+
+        .search-info {
+            border-radius: 3px;
+        }
+
+        @media (max-width: 768px) {
+            .ehx-search-container form {
+                flex-direction: column;
             }
-        </style>
+            
+            .ehx-search-container form > div {
+                width: 100% !important;
+                min-width: auto !important;
+            }
+        }
+    </style>
 <?php
-    }
+}
 
     /**
      * Also add this method to handle AJAX updates (optional - for real-time updates)
