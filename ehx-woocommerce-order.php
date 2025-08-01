@@ -317,12 +317,12 @@ class EHX_WooCommerce_Integration
                 <h2>Manual Actions</h2>
                 <table class="form-table">
                     <tr>
-                        <th scope="row">Process Orders</th>
+                        <th scope="row">Sync Orders</th>
                         <td>
                             <form method="post" action="" style="display: inline;">
                                 <?php wp_nonce_field('ehx_wc_manual_process', 'ehx_wc_nonce'); ?>
                                 <input type="hidden" name="action" value="manual_process">
-                                <input type="submit" class="button button-secondary" value="Process Orders Now">
+                                <input type="submit" class="button button-secondary" value="Sync Orders Now">
                             </form>
                             <p class="description">Process all pending order quotes immediately</p>
                         </td>
@@ -370,7 +370,7 @@ class EHX_WooCommerce_Integration
                 });
             });
         </script>
-<?php
+        <?php
 
         // Handle manual order processing
         if (
@@ -386,16 +386,334 @@ class EHX_WooCommerce_Integration
      * Display queue status
      */
     //===========================start=================================
- private function display_queue_status()
-{
-    global $wpdb;
-    $table_name = $wpdb->prefix . 'ehx_wc_order_queue';
+    private function display_queue_status()
+    {
+        global $wpdb;
+        $table_name = $wpdb->prefix . 'ehx_wc_order_queue';
 
-    // Handle AJAX update for processed status
-    if (isset($_POST['update_processed']) && wp_verify_nonce($_POST['ehx_wc_nonce'], 'ehx_wc_update_processed')) {
+        // Handle AJAX update for processed status
+        if (isset($_POST['update_processed']) && wp_verify_nonce($_POST['ehx_wc_nonce'], 'ehx_wc_update_processed')) {
+            $queue_id = intval($_POST['queue_id']);
+            $processed = intval($_POST['processed']);
+
+            $updated = $wpdb->update(
+                $table_name,
+                array('processed' => $processed),
+                array('id' => $queue_id),
+                array('%d'),
+                array('%d')
+            );
+
+            if ($updated !== false) {
+                echo '<div class="notice notice-success is-dismissible"><p>Queue item updated successfully!</p></div>';
+            } else {
+                echo '<div class="notice notice-error is-dismissible"><p>Failed to update queue item.</p></div>';
+            }
+        }
+
+        // Handle bulk actions
+        if (isset($_POST['bulk_action']) && $_POST['bulk_action'] !== '' && !empty($_POST['queue_items'])) {
+            if (wp_verify_nonce($_POST['ehx_wc_bulk_nonce'], 'ehx_wc_bulk_action')) {
+                $action = sanitize_text_field($_POST['bulk_action']);
+                $queue_ids = array_map('intval', $_POST['queue_items']);
+                $placeholders = implode(',', array_fill(0, count($queue_ids), '%d'));
+
+                if ($action === 'mark_processed') {
+                    $wpdb->query($wpdb->prepare(
+                        "UPDATE $table_name SET processed = 1 WHERE id IN ($placeholders)",
+                        ...$queue_ids
+                    ));
+                    echo '<div class="notice notice-success is-dismissible"><p>Selected items marked as processed!</p></div>';
+                } elseif ($action === 'mark_unprocessed') {
+                    $wpdb->query($wpdb->prepare(
+                        "UPDATE $table_name SET processed = 0 WHERE id IN ($placeholders)",
+                        ...$queue_ids
+                    ));
+                    echo '<div class="notice notice-success is-dismissible"><p>Selected items marked as unprocessed!</p></div>';
+                } elseif ($action === 'delete') {
+                    $wpdb->query($wpdb->prepare(
+                        "DELETE FROM $table_name WHERE id IN ($placeholders)",
+                        ...$queue_ids
+                    ));
+                    echo '<div class="notice notice-success is-dismissible"><p>Selected items deleted!</p></div>';
+                }
+            }
+        }
+
+        // Get queue data with pagination
+        $per_page = 10;
+        $current_page = isset($_GET['queue_page']) ? max(1, intval($_GET['queue_page'])) : 1;
+        $offset = ($current_page - 1) * $per_page;
+
+        $total_items = $wpdb->get_var("SELECT COUNT(*) FROM $table_name");
+        $total_pages = ceil($total_items / $per_page);
+
+        $queue_items = $wpdb->get_results($wpdb->prepare(
+            "SELECT q.*, p.post_title as order_title 
+         FROM $table_name q 
+         LEFT JOIN {$wpdb->posts} p ON q.order_id = p.ID 
+         ORDER BY q.created_at DESC 
+         LIMIT %d OFFSET %d",
+            $per_page,
+            $offset
+        ));
+
+        $pending = $wpdb->get_var("SELECT COUNT(*) FROM $table_name WHERE processed = 0");
+        $processed = $wpdb->get_var("SELECT COUNT(*) FROM $table_name WHERE processed = 1");
+
+        // Summary stats
+        echo "<div class='ehx-queue-stats' style='display: flex; gap: 20px; margin-bottom: 20px;'>";
+        echo "<div class='stat-box' style='padding: 15px; background: #f9f9f9; border-left: 4px solid #0073aa;'>";
+        echo "<strong>Total Orders:</strong> $total_items";
+        echo "</div>";
+        echo "<div class='stat-box' style='padding: 15px; background: #f9f9f9; border-left: 4px solid #d63638;'>";
+        echo "<strong>Pending:</strong> $pending";
+        echo "</div>";
+        echo "<div class='stat-box' style='padding: 15px; background: #f9f9f9; border-left: 4px solid #00a32a;'>";
+        echo "<strong>Processed:</strong> $processed";
+        echo "</div>";
+        echo "</div>";
+
+        // Schedule info
+        $next_order_processing = wp_next_scheduled('ehx_wc_process_orders');
+        $next_product_sync = wp_next_scheduled('ehx_wc_sync_products');
+
+        if ($next_order_processing || $next_product_sync) {
+            echo "<div class='ehx-schedule-info' style='margin-bottom: 20px; padding: 10px; background: #fff3cd; border: 1px solid #ffeaa7;'>";
+            if ($next_order_processing) {
+                echo "<p><strong>Next Order Processing:</strong> " . date('Y-m-d H:i:s', $next_order_processing) . "</p>";
+            }
+            if ($next_product_sync) {
+                echo "<p><strong>Next Product Sync:</strong> " . date('Y-m-d H:i:s', $next_product_sync) . "</p>";
+            }
+            echo "</div>";
+        }
+
+        if (empty($queue_items)) {
+            echo "<p>No orders in queue.</p>";
+            return;
+        }
+
+        // Bulk actions form
+        echo "<form method='post' id='ehx-queue-form'>";
+        wp_nonce_field('ehx_wc_bulk_action', 'ehx_wc_bulk_nonce');
+        echo "<div class='tablenav top' style='margin-bottom: 10px;'>";
+        echo "<div class='alignleft actions bulkactions'>";
+        echo "<select name='bulk_action'>";
+        echo "<option value=''>Bulk Actions</option>";
+        echo "<option value='mark_processed'>Mark as Processed</option>";
+        echo "<option value='mark_unprocessed'>Mark as Unprocessed</option>";
+        echo "<option value='delete'>Delete</option>";
+        echo "</select>";
+        echo "<input type='submit' class='button action' value='Apply'>";
+        echo "</div>";
+        echo "</div>";
+
+        // Queue table
+        echo "<table class='wp-list-table widefat fixed striped' style='margin-top: 10px;'>";
+        echo "<thead>";
+        echo "<tr>";
+        echo "<td class='manage-column column-cb check-column'><input type='checkbox' id='cb-select-all'></td>";
+        echo "<th class='manage-column'>ID</th>";
+        echo "<th class='manage-column'>Order ID</th>";
+        echo "<th class='manage-column'>Order Title</th>";
+        echo "<th class='manage-column'>Customer Info</th>";
+        echo "<th class='manage-column'>Created</th>";
+        echo "<th class='manage-column'>Status</th>";
+        echo "<th class='manage-column'>Actions</th>";
+        echo "</tr>";
+        echo "</thead>";
+        echo "<tbody>";
+        $counter = ($current_page - 1) * $per_page + 1; 
+
+        foreach ($queue_items as $item) {
+            $order_data = json_decode($item->order_data, true);
+            $status_class = $item->processed ? 'processed' : 'pending';
+            $status_text = $item->processed ? 'Processed' : 'Pending';
+            $status_color = $item->processed ? '#00a32a' : '#d63638';
+
+            echo "<tr class='queue-item-{$status_class}'>";
+            echo "<th class='check-column'><input type='checkbox' name='queue_items[]' value='{$item->id}'></th>";
+            // echo "<td><strong>{$item->id}</strong></td>";
+            echo "<td><strong>" . $counter . "</strong></td>";
+            echo "<td>";
+            echo "#{$item->order_id} ";
+            echo "</td>";
+            echo "<td>" . esc_html($item->order_title ?: 'N/A') . "</td>";
+            echo "<td>";
+            if (isset($order_data['name'])) {
+                echo "<strong>" . esc_html($order_data['name']) . "</strong><br>";
+                echo "<small>" . esc_html($order_data['email'] ?? '') . "</small>";
+                if (!empty($order_data['company'])) {
+                    echo "<br><small>" . esc_html($order_data['company']) . "</small>";
+                }
+            }
+            echo "</td>";
+            echo "<td>";
+            echo "<small>" . date('Y-m-d<\b\\r>H:i:s', strtotime($item->created_at)) . "</small>";
+            echo "</td>";
+            echo "<td>";
+            echo "<span style='color: {$status_color}; font-weight: bold;'>{$status_text}</span>";
+            echo "</td>";
+            echo "<td>";
+
+            // Quick status toggle
+            echo "<form method='post' style='display: inline-block; margin-right: 5px;'>";
+            wp_nonce_field('ehx_wc_update_processed', 'ehx_wc_nonce');
+            echo "<input type='hidden' name='update_processed' value='1'>";
+            echo "<input type='hidden' name='queue_id' value='{$item->id}'>";
+            echo "<input type='hidden' name='processed' value='" . ($item->processed ? 0 : 1) . "'>";
+            $toggle_text = $item->processed ? 'Mark Pending' : 'Mark Processed';
+            $toggle_class = $item->processed ? 'button-secondary' : 'button-primary';
+            echo "<input type='submit' class='button {$toggle_class}' value='{$toggle_text}' style='font-size: 11px; padding: 2px 8px;'>";
+            echo "</form>";
+
+            // View order data button
+            echo "<button type='button' class='button button-small view-order-data' data-order-id='{$item->id}' style='font-size: 11px; padding: 2px 8px;'>View Data</button>";
+
+            echo "</td>";
+            echo "</tr>";
+
+            // Hidden row for order data
+            echo "<tr id='order-data-{$item->id}' class='order-data-row' style='display: none;'>";
+            echo "<td colspan='8'>";
+            echo "<div style='background: #f9f9f9; padding: 15px; margin: 5px 0; border-left: 4px solid #0073aa;'>";
+            echo "<h4>Order Data for Queue ID #{$item->id}</h4>";
+            echo "<pre style='background: white; padding: 10px; border: 1px solid #ddd; overflow-x: auto; max-height: 300px;'>";
+            echo esc_html(json_encode($order_data, JSON_PRETTY_PRINT));
+            echo "</pre>";
+            echo "</div>";
+            echo "</td>";
+            echo "</tr>";
+            $counter++;
+        }
+
+        echo "</tbody>";
+        echo "</table>";
+        echo "</form>";
+
+        // Pagination
+        if ($total_pages > 1) {
+            echo "<div class='tablenav bottom'>";
+            echo "<div class='tablenav-pages'>";
+            echo "<span class='displaying-num'>" . sprintf('%d items', $total_items) . "</span>";
+
+            $base_url = add_query_arg('queue_page', '');
+
+            if ($current_page > 1) {
+                echo "<a class='button' href='" . esc_url(add_query_arg('queue_page', $current_page - 1)) . "'>&laquo; Previous</a> ";
+            }
+
+            // Show page numbers
+            for ($i = max(1, $current_page - 2); $i <= min($total_pages, $current_page + 2); $i++) {
+                if ($i == $current_page) {
+                    echo "<span class='button button-primary'>{$i}</span> ";
+                } else {
+                    echo "<a class='button' href='" . esc_url(add_query_arg('queue_page', $i)) . "'>{$i}</a> ";
+                }
+            }
+
+            if ($current_page < $total_pages) {
+                echo "<a class='button' href='" . esc_url(add_query_arg('queue_page', $current_page + 1)) . "'>Next &raquo;</a>";
+            }
+
+            echo "</div>";
+            echo "</div>";
+        }
+
+        // JavaScript for interactions
+        ?>
+        <script>
+            jQuery(document).ready(function($) {
+                // Select all checkbox
+                $('#cb-select-all').change(function() {
+                    $('input[name="queue_items[]"]').prop('checked', this.checked);
+                });
+
+                // Individual checkboxes
+                $('input[name="queue_items[]"]').change(function() {
+                    var total = $('input[name="queue_items[]"]').length;
+                    var checked = $('input[name="queue_items[]"]:checked').length;
+                    $('#cb-select-all').prop('checked', total === checked);
+                });
+
+                // View order data toggle
+                $('.view-order-data').click(function() {
+                    var orderId = $(this).data('order-id');
+                    var dataRow = $('#order-data-' + orderId);
+
+                    if (dataRow.is(':visible')) {
+                        dataRow.hide();
+                        $(this).text('View Data');
+                    } else {
+                        dataRow.show();
+                        $(this).text('Hide Data');
+                    }
+                });
+
+                // Confirm bulk delete
+                $('#ehx-queue-form').submit(function(e) {
+                    var action = $('select[name="bulk_action"]').val();
+                    if (action === 'delete') {
+                        var checkedItems = $('input[name="queue_items[]"]:checked').length;
+                        if (checkedItems > 0) {
+                            if (!confirm('Are you sure you want to delete ' + checkedItems + ' selected item(s)? This action cannot be undone.')) {
+                                e.preventDefault();
+                            }
+                        }
+                    }
+                });
+            });
+        </script>
+
+        <style>
+            .ehx-queue-stats .stat-box {
+                min-width: 120px;
+                text-align: center;
+            }
+
+            .queue-item-processed {
+                background-color: #f0f9ff;
+            }
+
+            .queue-item-pending {
+                background-color: #fef2f2;
+            }
+
+            .order-data-row td {
+                padding: 0 !important;
+            }
+
+            .tablenav-pages .button {
+                margin-right: 5px;
+                text-decoration: none;
+            }
+
+            .wp-list-table th,
+            .wp-list-table td {
+                vertical-align: top;
+            }
+        </style>
+<?php
+    }
+
+    /**
+     * Also add this method to handle AJAX updates (optional - for real-time updates)
+     */
+    public function ajax_update_queue_status()
+    {
+        check_ajax_referer('ehx_wc_ajax_nonce', 'nonce');
+
+        if (!current_user_can('manage_options')) {
+            wp_die('Unauthorized');
+        }
+
         $queue_id = intval($_POST['queue_id']);
         $processed = intval($_POST['processed']);
-        
+
+        global $wpdb;
+        $table_name = $wpdb->prefix . 'ehx_wc_order_queue';
+
         $updated = $wpdb->update(
             $table_name,
             array('processed' => $processed),
@@ -403,335 +721,14 @@ class EHX_WooCommerce_Integration
             array('%d'),
             array('%d')
         );
-        
+
         if ($updated !== false) {
-            echo '<div class="notice notice-success is-dismissible"><p>Queue item updated successfully!</p></div>';
+            wp_send_json_success('Status updated successfully');
         } else {
-            echo '<div class="notice notice-error is-dismissible"><p>Failed to update queue item.</p></div>';
+            wp_send_json_error('Failed to update status');
         }
     }
-
-    // Handle bulk actions
-    if (isset($_POST['bulk_action']) && $_POST['bulk_action'] !== '' && !empty($_POST['queue_items'])) {
-        if (wp_verify_nonce($_POST['ehx_wc_bulk_nonce'], 'ehx_wc_bulk_action')) {
-            $action = sanitize_text_field($_POST['bulk_action']);
-            $queue_ids = array_map('intval', $_POST['queue_items']);
-            $placeholders = implode(',', array_fill(0, count($queue_ids), '%d'));
-            
-            if ($action === 'mark_processed') {
-                $wpdb->query($wpdb->prepare(
-                    "UPDATE $table_name SET processed = 1 WHERE id IN ($placeholders)",
-                    ...$queue_ids
-                ));
-                echo '<div class="notice notice-success is-dismissible"><p>Selected items marked as processed!</p></div>';
-            } elseif ($action === 'mark_unprocessed') {
-                $wpdb->query($wpdb->prepare(
-                    "UPDATE $table_name SET processed = 0 WHERE id IN ($placeholders)",
-                    ...$queue_ids
-                ));
-                echo '<div class="notice notice-success is-dismissible"><p>Selected items marked as unprocessed!</p></div>';
-            } elseif ($action === 'delete') {
-                $wpdb->query($wpdb->prepare(
-                    "DELETE FROM $table_name WHERE id IN ($placeholders)",
-                    ...$queue_ids
-                ));
-                echo '<div class="notice notice-success is-dismissible"><p>Selected items deleted!</p></div>';
-            }
-        }
-    }
-
-    // Get queue data with pagination
-    $per_page = 10;
-    $current_page = isset($_GET['queue_page']) ? max(1, intval($_GET['queue_page'])) : 1;
-    $offset = ($current_page - 1) * $per_page;
-
-    $total_items = $wpdb->get_var("SELECT COUNT(*) FROM $table_name");
-    $total_pages = ceil($total_items / $per_page);
-
-    $queue_items = $wpdb->get_results($wpdb->prepare(
-        "SELECT q.*, p.post_title as order_title 
-         FROM $table_name q 
-         LEFT JOIN {$wpdb->posts} p ON q.order_id = p.ID 
-         ORDER BY q.created_at DESC 
-         LIMIT %d OFFSET %d",
-        $per_page,
-        $offset
-    ));
-
-    $pending = $wpdb->get_var("SELECT COUNT(*) FROM $table_name WHERE processed = 0");
-    $processed = $wpdb->get_var("SELECT COUNT(*) FROM $table_name WHERE processed = 1");
-
-    // Summary stats
-    echo "<div class='ehx-queue-stats' style='display: flex; gap: 20px; margin-bottom: 20px;'>";
-    echo "<div class='stat-box' style='padding: 15px; background: #f9f9f9; border-left: 4px solid #0073aa;'>";
-    echo "<strong>Total Orders:</strong> $total_items";
-    echo "</div>";
-    echo "<div class='stat-box' style='padding: 15px; background: #f9f9f9; border-left: 4px solid #d63638;'>";
-    echo "<strong>Pending:</strong> $pending";
-    echo "</div>";
-    echo "<div class='stat-box' style='padding: 15px; background: #f9f9f9; border-left: 4px solid #00a32a;'>";
-    echo "<strong>Processed:</strong> $processed";
-    echo "</div>";
-    echo "</div>";
-
-    // Schedule info
-    $next_order_processing = wp_next_scheduled('ehx_wc_process_orders');
-    $next_product_sync = wp_next_scheduled('ehx_wc_sync_products');
-
-    if ($next_order_processing || $next_product_sync) {
-        echo "<div class='ehx-schedule-info' style='margin-bottom: 20px; padding: 10px; background: #fff3cd; border: 1px solid #ffeaa7;'>";
-        if ($next_order_processing) {
-            echo "<p><strong>Next Order Processing:</strong> " . date('Y-m-d H:i:s', $next_order_processing) . "</p>";
-        }
-        if ($next_product_sync) {
-            echo "<p><strong>Next Product Sync:</strong> " . date('Y-m-d H:i:s', $next_product_sync) . "</p>";
-        }
-        echo "</div>";
-    }
-
-    if (empty($queue_items)) {
-        echo "<p>No orders in queue.</p>";
-        return;
-    }
-
-    // Bulk actions form
-    echo "<form method='post' id='ehx-queue-form'>";
-    wp_nonce_field('ehx_wc_bulk_action', 'ehx_wc_bulk_nonce');
-    echo "<div class='tablenav top' style='margin-bottom: 10px;'>";
-    echo "<div class='alignleft actions bulkactions'>";
-    echo "<select name='bulk_action'>";
-    echo "<option value=''>Bulk Actions</option>";
-    echo "<option value='mark_processed'>Mark as Processed</option>";
-    echo "<option value='mark_unprocessed'>Mark as Unprocessed</option>";
-    echo "<option value='delete'>Delete</option>";
-    echo "</select>";
-    echo "<input type='submit' class='button action' value='Apply'>";
-    echo "</div>";
-    echo "</div>";
-
-    // Queue table
-    echo "<table class='wp-list-table widefat fixed striped' style='margin-top: 10px;'>";
-    echo "<thead>";
-    echo "<tr>";
-    echo "<td class='manage-column column-cb check-column'><input type='checkbox' id='cb-select-all'></td>";
-    echo "<th class='manage-column'>ID</th>";
-    echo "<th class='manage-column'>Order ID</th>";
-    echo "<th class='manage-column'>Order Title</th>";
-    echo "<th class='manage-column'>Customer Info</th>";
-    echo "<th class='manage-column'>Created</th>";
-    echo "<th class='manage-column'>Status</th>";
-    echo "<th class='manage-column'>Actions</th>";
-    echo "</tr>";
-    echo "</thead>";
-    echo "<tbody>";
-
-    foreach ($queue_items as $item) {
-        $order_data = json_decode($item->order_data, true);
-        $status_class = $item->processed ? 'processed' : 'pending';
-        $status_text = $item->processed ? 'Processed' : 'Pending';
-        $status_color = $item->processed ? '#00a32a' : '#d63638';
-        
-        echo "<tr class='queue-item-{$status_class}'>";
-        echo "<th class='check-column'><input type='checkbox' name='queue_items[]' value='{$item->id}'></th>";
-        echo "<td><strong>{$item->id}</strong></td>";
-        echo "<td>";
-        if ($item->order_title) {
-            echo "<a href='" . admin_url("post.php?post={$item->order_id}&action=edit") . "' target='_blank'>";
-            echo "#{$item->order_id}";
-            echo "</a>";
-        } else {
-            echo "#{$item->order_id} <em>(Order not found)</em>";
-        }
-        echo "</td>";
-        echo "<td>" . esc_html($item->order_title ?: 'N/A') . "</td>";
-        echo "<td>";
-        if (isset($order_data['name'])) {
-            echo "<strong>" . esc_html($order_data['name']) . "</strong><br>";
-            echo "<small>" . esc_html($order_data['email'] ?? '') . "</small>";
-            if (!empty($order_data['company'])) {
-                echo "<br><small>" . esc_html($order_data['company']) . "</small>";
-            }
-        }
-        echo "</td>";
-        echo "<td>";
-        echo "<small>" . date('Y-m-d<\b\\r>H:i:s', strtotime($item->created_at)) . "</small>";
-        echo "</td>";
-        echo "<td>";
-        echo "<span style='color: {$status_color}; font-weight: bold;'>{$status_text}</span>";
-        echo "</td>";
-        echo "<td>";
-        
-        // Quick status toggle
-        echo "<form method='post' style='display: inline-block; margin-right: 5px;'>";
-        wp_nonce_field('ehx_wc_update_processed', 'ehx_wc_nonce');
-        echo "<input type='hidden' name='update_processed' value='1'>";
-        echo "<input type='hidden' name='queue_id' value='{$item->id}'>";
-        echo "<input type='hidden' name='processed' value='" . ($item->processed ? 0 : 1) . "'>";
-        $toggle_text = $item->processed ? 'Mark Pending' : 'Mark Processed';
-        $toggle_class = $item->processed ? 'button-secondary' : 'button-primary';
-        echo "<input type='submit' class='button {$toggle_class}' value='{$toggle_text}' style='font-size: 11px; padding: 2px 8px;'>";
-        echo "</form>";
-        
-        // View order data button
-        echo "<button type='button' class='button button-small view-order-data' data-order-id='{$item->id}' style='font-size: 11px; padding: 2px 8px;'>View Data</button>";
-        
-        echo "</td>";
-        echo "</tr>";
-
-        // Hidden row for order data
-        echo "<tr id='order-data-{$item->id}' class='order-data-row' style='display: none;'>";
-        echo "<td colspan='8'>";
-        echo "<div style='background: #f9f9f9; padding: 15px; margin: 5px 0; border-left: 4px solid #0073aa;'>";
-        echo "<h4>Order Data for Queue ID #{$item->id}</h4>";
-        echo "<pre style='background: white; padding: 10px; border: 1px solid #ddd; overflow-x: auto; max-height: 300px;'>";
-        echo esc_html(json_encode($order_data, JSON_PRETTY_PRINT));
-        echo "</pre>";
-        echo "</div>";
-        echo "</td>";
-        echo "</tr>";
-    }
-
-    echo "</tbody>";
-    echo "</table>";
-    echo "</form>";
-
-    // Pagination
-    if ($total_pages > 1) {
-        echo "<div class='tablenav bottom'>";
-        echo "<div class='tablenav-pages'>";
-        echo "<span class='displaying-num'>" . sprintf('%d items', $total_items) . "</span>";
-        
-        $base_url = add_query_arg('queue_page', '');
-        
-        if ($current_page > 1) {
-            echo "<a class='button' href='" . esc_url(add_query_arg('queue_page', $current_page - 1)) . "'>&laquo; Previous</a> ";
-        }
-        
-        // Show page numbers
-        for ($i = max(1, $current_page - 2); $i <= min($total_pages, $current_page + 2); $i++) {
-            if ($i == $current_page) {
-                echo "<span class='button button-primary'>{$i}</span> ";
-            } else {
-                echo "<a class='button' href='" . esc_url(add_query_arg('queue_page', $i)) . "'>{$i}</a> ";
-            }
-        }
-        
-        if ($current_page < $total_pages) {
-            echo "<a class='button' href='" . esc_url(add_query_arg('queue_page', $current_page + 1)) . "'>Next &raquo;</a>";
-        }
-        
-        echo "</div>";
-        echo "</div>";
-    }
-
-    // JavaScript for interactions
-    ?>
-    <script>
-    jQuery(document).ready(function($) {
-        // Select all checkbox
-        $('#cb-select-all').change(function() {
-            $('input[name="queue_items[]"]').prop('checked', this.checked);
-        });
-        
-        // Individual checkboxes
-        $('input[name="queue_items[]"]').change(function() {
-            var total = $('input[name="queue_items[]"]').length;
-            var checked = $('input[name="queue_items[]"]:checked').length;
-            $('#cb-select-all').prop('checked', total === checked);
-        });
-        
-        // View order data toggle
-        $('.view-order-data').click(function() {
-            var orderId = $(this).data('order-id');
-            var dataRow = $('#order-data-' + orderId);
-            
-            if (dataRow.is(':visible')) {
-                dataRow.hide();
-                $(this).text('View Data');
-            } else {
-                dataRow.show();
-                $(this).text('Hide Data');
-            }
-        });
-        
-        // Confirm bulk delete
-        $('#ehx-queue-form').submit(function(e) {
-            var action = $('select[name="bulk_action"]').val();
-            if (action === 'delete') {
-                var checkedItems = $('input[name="queue_items[]"]:checked').length;
-                if (checkedItems > 0) {
-                    if (!confirm('Are you sure you want to delete ' + checkedItems + ' selected item(s)? This action cannot be undone.')) {
-                        e.preventDefault();
-                    }
-                }
-            }
-        });
-    });
-    </script>
-    
-    <style>
-    .ehx-queue-stats .stat-box {
-        min-width: 120px;
-        text-align: center;
-    }
-    
-    .queue-item-processed {
-        background-color: #f0f9ff;
-    }
-    
-    .queue-item-pending {
-        background-color: #fef2f2;
-    }
-    
-    .order-data-row td {
-        padding: 0 !important;
-    }
-    
-    .tablenav-pages .button {
-        margin-right: 5px;
-        text-decoration: none;
-    }
-    
-    .wp-list-table th,
-    .wp-list-table td {
-        vertical-align: top;
-    }
-    </style>
-    <?php
-}
-
-/**
- * Also add this method to handle AJAX updates (optional - for real-time updates)
- */
-public function ajax_update_queue_status()
-{
-    check_ajax_referer('ehx_wc_ajax_nonce', 'nonce');
-    
-    if (!current_user_can('manage_options')) {
-        wp_die('Unauthorized');
-    }
-    
-    $queue_id = intval($_POST['queue_id']);
-    $processed = intval($_POST['processed']);
-    
-    global $wpdb;
-    $table_name = $wpdb->prefix . 'ehx_wc_order_queue';
-    
-    $updated = $wpdb->update(
-        $table_name,
-        array('processed' => $processed),
-        array('id' => $queue_id),
-        array('%d'),
-        array('%d')
-    );
-    
-    if ($updated !== false) {
-        wp_send_json_success('Status updated successfully');
-    } else {
-        wp_send_json_error('Failed to update status');
-    }
-}
-//===================================finish====================================
+    //===================================finish====================================
     /**
      * Schedule cron jobs
      */
@@ -1011,6 +1008,7 @@ public function ajax_update_queue_status()
         $created_count = 0;
         $updated_count = 0;
         $errors = array();
+        $skipped_count = 0;
 
         $response_data = json_decode($data, true);
 
@@ -1021,6 +1019,11 @@ public function ajax_update_queue_status()
         $products_data = $response_data['data'];
 
         foreach ($products_data as $product_data) {
+              if (empty($product_data['express']) || $product_data['express'] !== true) {
+            $skipped_count++;
+            continue;
+        }
+
             $result = $this->create_or_update_product($product_data);
 
             if ($result['success']) {
@@ -1034,12 +1037,14 @@ public function ajax_update_queue_status()
             }
         }
 
-        $message = sprintf(
-            'Sync completed. Created: %d, Updated: %d, Errors: %d',
-            $created_count,
-            $updated_count,
-            count($errors)
-        );
+    $message = sprintf(
+        'Sync completed. Created: %d, Updated: %d, Skipped: %d, Errors: %d',
+        $created_count,
+        $updated_count,
+        $skipped_count,
+        count($errors)
+    );
+
 
         if (!empty($errors)) {
             $message .= ' | First error: ' . $errors[0];
