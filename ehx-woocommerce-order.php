@@ -1172,9 +1172,10 @@ class EHX_WooCommerce_Integration
         }
 
         $curl = curl_init();
+         $api_url = add_query_arg('paginate', 'false', $endpoint);
 
         curl_setopt_array($curl, [
-            CURLOPT_URL => $endpoint,
+            CURLOPT_URL => $api_url,
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_ENCODING => '',
             CURLOPT_MAXREDIRS => 10,
