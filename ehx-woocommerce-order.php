@@ -36,6 +36,8 @@ class EHX_WooCommerce_Integration
         add_action('ehx_wc_process_orders', array($this, 'process_queued_orders'));
         add_action('ehx_wc_sync_products', array($this, 'sync_products'));
 
+        add_action('wp_ajax_reset_product_sync', array($this, 'reset_product_sync_ajax'));
+
         // Plugin activation/deactivation
         register_activation_hook(__FILE__, array($this, 'activate'));
         register_deactivation_hook(__FILE__, array($this, 'deactivate'));
@@ -315,16 +317,16 @@ class EHX_WooCommerce_Integration
                 $next_order_processing = wp_next_scheduled('ehx_wc_process_orders');
                 $next_product_sync = wp_next_scheduled('ehx_wc_sync_products');
 
-                if ($next_order_processing || $next_product_sync) {
-                    echo "<div class='ehx-schedule-info' style='margin-bottom: 20px; padding: 12px; background: #fff8e3; border: 1px solid #fff8e3;'>";
-                    if ($next_order_processing) {
-                        echo "<p style='margin-top: 0;'><strong>Next Order Processing:</strong> " . date('Y-m-d H:i:s', $next_order_processing) . "</p>";
-                    }
-                    if ($next_product_sync) {
-                        echo "<p style='margin: 0px;'><strong>Next Product Sync:</strong> " . date('Y-m-d H:i:s', $next_product_sync) . "</p>";
-                    }
-                    echo "</div>";
-                } ?>
+                // if ($next_order_processing || $next_product_sync) {
+                //     echo "<div class='ehx-schedule-info' style='margin-bottom: 20px; padding: 12px; background: #fff8e3; border: 1px solid #fff8e3;'>";
+                //     if ($next_order_processing) {
+                //         echo "<p style='margin-top: 0;'><strong>Next Order Processing:</strong> " . date('Y-m-d H:i:s', $next_order_processing) . "</p>";
+                //     }
+                //     if ($next_product_sync) {
+                //         echo "<p style='margin: 0px;'><strong>Next Product Sync:</strong> " . date('Y-m-d H:i:s', $next_product_sync) . "</p>";
+                //     }
+                //     echo "</div>";
+                // } ?>
                 <h2>Manual Actions</h2>
                 <table class="form-table">
                     <tr>
@@ -345,9 +347,8 @@ class EHX_WooCommerce_Integration
                             <button id="reset-sync" class="button button-secondary" style="margin-left: 10px;">Reset Sync</button>
                             <div id="sync-status"></div>
                             <p class="description">Manually sync products from the API</p>
-                            <p class="description">Last Sync: <?php echo get_option('ehx_wc_product_last_sync', ''); ?></p>
                             <?php if (get_option('ehx_wc_product_total_number', 0) > 0): ?>
-                                <p class="description">Sync Stats : Total Products Stored: <?php echo get_option('ehx_wc_product_stored_number', 0); ?>, Total Products in API: <?php echo get_option('ehx_wc_product_total_number', 0); ?></p>
+                                <p class="description">Sync Stats : Total Products Stored: <?php echo get_option('ehx_wc_product_stored_number', 0); ?>, Total Express Products in API: <?php echo get_option('ehx_wc_product_total_number', 0); ?></p>
                             <?php endif; ?>
                         </td>
                     </tr>
@@ -1026,7 +1027,8 @@ class EHX_WooCommerce_Integration
             array(
                 'order_id' => $order_id,
                 'order_data' => json_encode($order_data),
-                'processed' => 0
+                'processed' => 0,
+                'created_at' => current_time('mysql', 1)
             ),
             array('%d', '%s', '%d')
         );
@@ -1321,6 +1323,11 @@ class EHX_WooCommerce_Integration
         if (!$response_data || !isset($response_data['data'])) {
             return array('success' => false, 'message' => 'Invalid API response');
         }
+        if (isset($response_data['total'])) {
+            update_option('ehx_wc_product_total_number', $response_data['total']);
+        } elseif (isset($response_data['meta']['total'])) {
+            update_option('ehx_wc_product_total_number', $response_data['meta']['total']);
+        }
 
         $products_data = $response_data['data'];
 
@@ -1356,6 +1363,12 @@ class EHX_WooCommerce_Integration
             }
         }
 
+        if ($created_count > 0 || $updated_count > 0) {
+            $current_stored = get_option('ehx_wc_product_stored_number', 0);
+            $new_stored = $current_stored + $created_count + $updated_count;
+            update_option('ehx_wc_product_stored_number', $new_stored);
+        }
+
         // Update page number for next batch
         update_option('ehx_wc_current_page', $current_page + 1);
 
@@ -1388,6 +1401,33 @@ class EHX_WooCommerce_Integration
             )
         );
     }
+
+    /**
+     * AJAX handler for resetting product sync
+     */
+    public function reset_product_sync_ajax()
+    {
+        check_ajax_referer('reset_sync_nonce', 'nonce');
+
+        if (!current_user_can('manage_options')) {
+            wp_die('Unauthorized');
+        }
+
+        // Reset the current page to 1
+        update_option('ehx_wc_current_page', 1);
+
+        // Reset sync stats
+        update_option('ehx_wc_product_stored_number', 0);
+        update_option('ehx_wc_product_total_number', 0);
+
+        // Clear last sync time
+        delete_option('ehx_wc_product_last_sync');
+
+        wp_send_json_success(array(
+            'message' => 'Product sync has been reset. Next sync will start from page 1.'
+        ));
+    }
+
 
     /**
      * Create or update a product
