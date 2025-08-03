@@ -527,7 +527,7 @@ class EHX_WooCommerce_Integration
         }
 
         // Get queue data with pagination and search
-        $per_page = 3;
+        $per_page = 8;
         $current_page = isset($_GET['queue_page']) ? max(1, intval($_GET['queue_page'])) : 1;
         $offset = ($current_page - 1) * $per_page;
 
@@ -654,7 +654,7 @@ class EHX_WooCommerce_Integration
         echo "<thead>";
         echo "<tr>";
         echo "<td class='manage-column column-cb check-column'><input type='checkbox' id='cb-select-all'></td>";
-        echo "<th class='manage-column'>ID</th>";
+        echo "<th class='manage-column'>SL</th>";
         echo "<th class='manage-column'>Order ID</th>";
         echo "<th class='manage-column'>Customer Info</th>";
         echo "<th class='manage-column'>Created</th>";
