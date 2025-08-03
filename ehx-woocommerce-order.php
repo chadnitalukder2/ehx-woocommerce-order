@@ -344,6 +344,10 @@ class EHX_WooCommerce_Integration
                             <button id="manual-sync" class="button button-primary">Sync Products Now</button>
                             <div id="sync-status"></div>
                             <p class="description">Manually sync products from the API</p>
+                            <p class="description">Last Sync: <?php echo get_option('ehx_wc_product_last_sync', ''); ?></p>
+                            <?php if(get_option('ehx_wc_product_total_number', 0) > 0): ?>
+                            <p class="description">Sync Stats : Total Products Stored: <?php echo get_option('ehx_wc_product_stored_number', 0); ?>, Total Products in API: <?php echo get_option('ehx_wc_product_total_number', 0); ?></p>
+                            <?php endif; ?>
                         </td>
                     </tr>
                 </table>
@@ -1148,6 +1152,7 @@ class EHX_WooCommerce_Integration
         $result = $this->sync_products();
 
         if ($result['success']) {
+            update_option('ehx_wc_product_last_sync', current_time('mysql'));
             wp_send_json_success($result);
         } else {
             wp_send_json_error($result['message']);
@@ -1199,6 +1204,9 @@ class EHX_WooCommerce_Integration
         if ($error) {
             return array('success' => false, 'message' => 'cURL Error: ' . $error);
         }
+        $storedProduct =  get_option('ehx_wc_product_stored_number', 0);
+        $startProduct = $storedProduct;
+        $endProduct = $startProduct + 100;
 
         $created_count = 0;
         $updated_count = 0;
@@ -1212,25 +1220,35 @@ class EHX_WooCommerce_Integration
         }
 
         $products_data = $response_data['data'];
-
-        foreach ($products_data as $product_data) {
-            if (empty($product_data['express']) || $product_data['express'] !== true) {
-                $skipped_count++;
-                continue;
-            }
-
-            $result = $this->create_or_update_product($product_data);
-
-            if ($result['success']) {
-                if ($result['action'] === 'created') {
-                    $created_count++;
-                } else {
-                    $updated_count++;
+        update_option('ehx_wc_product_total_number', count($products_data));
+        $totalProducts = get_option('ehx_wc_product_total_number', 0);
+    
+        if ($endProduct - 100 > $totalProducts) {
+            $message = 'No more products to sync';
+            return array('error' => true, 'message' => $message);
+        }
+        foreach ($products_data as $product_key => $product_data) {
+            if ($product_key >= $startProduct && $product_key < $endProduct) {
+                if (empty($product_data['express']) || $product_data['express'] !== true) {
+                    $skipped_count++;
+                    continue;
                 }
-            } else {
-                $errors[] = $result['message'];
+
+                $result = $this->create_or_update_product($product_data);
+
+                if ($result['success']) {
+                    if ($result['action'] === 'created') {
+                        $created_count++;
+                    } else {
+                        $updated_count++;
+                    }
+                } else {
+                    $errors[] = $result['message'];
+                }
             }
         }
+
+        update_option('ehx_wc_product_stored_number', $endProduct);
 
         $message = sprintf(
             'Sync completed. Created: %d, Updated: %d, Skipped: %d, Errors: %d',
