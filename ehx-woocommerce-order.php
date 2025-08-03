@@ -344,7 +344,6 @@ class EHX_WooCommerce_Integration
                             <button id="manual-sync" class="button button-primary">Sync Products Now</button>
                             <div id="sync-status"></div>
                             <p class="description">Manually sync products from the API</p>
-                            <p class="description">Last Sync: <?php echo get_option('ehx_wc_product_last_sync', ''); ?></p>
                             <?php if(get_option('ehx_wc_product_total_number', 0) > 0): ?>
                             <p class="description">Sync Stats : Total Products Stored: <?php echo get_option('ehx_wc_product_stored_number', 0); ?>, Total Products in API: <?php echo get_option('ehx_wc_product_total_number', 0); ?></p>
                             <?php endif; ?>
