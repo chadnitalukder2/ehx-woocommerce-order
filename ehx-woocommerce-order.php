@@ -1,7 +1,7 @@
 <?php
 
 /**
- * Plugin Name: EHX WooCommerce Order
+ * Plugin Name: EHx WooCommerce Order
  * Description: Complete integration for WooCommerce - syncs products from API and sends order quotes to API
  * Version: 1.0.0
  * Author:  EH Studio
@@ -301,7 +301,7 @@ class EHX_WooCommerce_Integration
     {
     ?>
         <div class="wrap">
-            <h1>EHX WooCommerce Integration Settings</h1>
+            <h1>EHx WooCommerce Integration Settings</h1>
             <form action='options.php' method='post'>
                 <?php
                 settings_fields($this->option_group);
