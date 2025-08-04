@@ -1073,7 +1073,7 @@ class EHX_WooCommerce_Integration
                         break;
                     case 'fitting':
                     case 'pa_fitting':
-                        $item_data['fitting'] = sanitize_text_field($meta->value);
+                        $item_data['fitting'] = ucwords(strtolower(sanitize_text_field($meta->value)));
                         break;
                 }
             }
@@ -1098,7 +1098,7 @@ class EHX_WooCommerce_Integration
                             break;
                         case 'fitting':
                             if (empty($item_data['fitting'])) {
-                                $item_data['fitting'] = sanitize_text_field($attr_value);
+                                $item_data['fitting'] = ucwords(strtolower(sanitize_text_field($attr_value)));
                             }
                             break;
                     }
@@ -1127,6 +1127,14 @@ class EHX_WooCommerce_Integration
                                     $selected_value = $product->get_attribute($attr_name);
                                     if ($selected_value) {
                                         $item_data['size'] = sanitize_text_field($selected_value);
+                                    }
+                                }
+                                break;
+                            case 'fitting':
+                                if (empty($item_data['fitting']) && $attribute->is_variation()) {
+                                    $selected_value = $product->get_attribute($attr_name);
+                                    if ($selected_value) {
+                                        $item_data['fitting'] = ucwords(strtolower(sanitize_text_field($selected_value)));
                                     }
                                 }
                                 break;
