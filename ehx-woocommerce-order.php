@@ -326,7 +326,8 @@ class EHX_WooCommerce_Integration
                 //         echo "<p style='margin: 0px;'><strong>Next Product Sync:</strong> " . date('Y-m-d H:i:s', $next_product_sync) . "</p>";
                 //     }
                 //     echo "</div>";
-                // } ?>
+                // } 
+                ?>
                 <h2>Manual Actions</h2>
                 <table class="form-table">
                     <tr>
@@ -1028,7 +1029,6 @@ class EHX_WooCommerce_Integration
                 'order_id' => $order_id,
                 'order_data' => json_encode($order_data),
                 'processed' => 0,
-                'created_at' => current_time('mysql', 1)
             ),
             array('%d', '%s', '%d')
         );
@@ -1061,11 +1061,11 @@ class EHX_WooCommerce_Integration
                     case 'colour':
                     case 'pa_color':
                     case 'pa_colour':
-                        $item_data['color'] = sanitize_text_field($meta->value);
+                        $item_data['color'] = ucfirst(strtolower(sanitize_text_field($meta->value)));
                         break;
                     case 'quantity_color':
                     case 'quantity_colour':
-                        $item_data['quantity_color'] = sanitize_text_field($meta->value);
+                        $item_data['quantity_color'] = ucfirst(strtolower(sanitize_text_field($meta->value)));
                         break;
                     case 'size':
                     case 'pa_size':
@@ -1088,7 +1088,7 @@ class EHX_WooCommerce_Integration
                         case 'color':
                         case 'colour':
                             if (empty($item_data['color'])) {
-                                $item_data['color'] = sanitize_text_field($attr_value);
+                                $item_data['color'] = ucfirst(strtolower(sanitize_text_field($attr_value)));
                             }
                             break;
                         case 'size':
@@ -1118,7 +1118,7 @@ class EHX_WooCommerce_Integration
                                 if (empty($item_data['color']) && $attribute->is_variation()) {
                                     $selected_value = $product->get_attribute($attr_name);
                                     if ($selected_value) {
-                                        $item_data['color'] = sanitize_text_field($selected_value);
+                                        $item_data['color'] = ucfirst(strtolower(sanitize_text_field($selected_value)));
                                     }
                                 }
                                 break;
