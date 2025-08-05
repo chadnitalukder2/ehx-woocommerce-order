@@ -349,7 +349,9 @@ class EHX_WooCommerce_Integration
                             <div id="sync-status"></div>
                             <p class="description">Manually sync products from the API</p>
                             <?php if (get_option('ehx_wc_product_total_number', 0) > 0): ?>
-                                <p class="description">Sync Stats : Total Products Stored: <?php echo get_option('ehx_wc_product_stored_number', 0); ?>, Total Express Products in API: <?php echo get_option('ehx_wc_product_total_number', 0); ?></p>
+                                <p class="description">Sync Stats :
+                                    Total Products Stored: <?php echo get_option('ehx_wc_product_stored_number', 0); ?>,
+                                    Total Express Products in API: <?php echo get_option('ehx_wc_product_total_number', 0); ?></p>
                             <?php endif; ?>
                         </td>
                     </tr>
@@ -1275,7 +1277,7 @@ class EHX_WooCommerce_Integration
             return array('success' => false, 'message' => 'Product sync is disabled');
         }
 
-        $endpoint = get_option('ehx_wc_product_endpoint', '');
+        $endpoint = get_option('ehx_wc_product_endpoint', 'https://www.portal.immersivebrands.co.uk/api/product');
         $bearer_token = get_option('ehx_wc_bearer_token', '');
         $location_key = get_option('ehx_wc_location_key', '');
 
@@ -1371,9 +1373,14 @@ class EHX_WooCommerce_Integration
             }
         }
 
-        if ($created_count > 0 || $updated_count > 0) {
+        // if ($created_count > 0 || $updated_count > 0) {
+        //     $current_stored = get_option('ehx_wc_product_stored_number', 0);
+        //     $new_stored = $current_stored + $created_count + $updated_count;
+        //     update_option('ehx_wc_product_stored_number', $new_stored);
+        // }
+        if ($created_count > 0) {
             $current_stored = get_option('ehx_wc_product_stored_number', 0);
-            $new_stored = $current_stored + $created_count + $updated_count;
+            $new_stored = $current_stored + $created_count;
             update_option('ehx_wc_product_stored_number', $new_stored);
         }
 
