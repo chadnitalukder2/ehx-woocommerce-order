@@ -242,7 +242,7 @@ class EHX_WooCommerce_Integration
 
     public function product_endpoint_render()
     {
-        $endpoint = get_option('ehx_wc_product_endpoint', '');
+        $endpoint = get_option('ehx_wc_product_endpoint', 'https://www.portal.immersivebrands.co.uk/api/product');
     ?>
         <input type='url' name='ehx_wc_product_endpoint' value='<?php echo esc_attr($endpoint); ?>' style='width: 400px;' required>
         <!-- <p class="description">Enter the full URL of your product API endpoint</p> -->
