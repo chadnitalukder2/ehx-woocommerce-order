@@ -1475,6 +1475,10 @@ class EHX_WooCommerce_Integration
             if (!empty($product_data['short_description'])) {
                 $product->set_short_description($product_data['short_description']);
             }
+            if (!empty($product_data['description'])) {
+                $product->set_description($product_data['description']);
+            }
+
 
             // Set pricing
             $regular_price = floatval($product_data['unit_price']);
