@@ -1048,10 +1048,8 @@ class EHX_WooCommerce_Integration
             $product = $item->get_product();
             if (!$product) continue;
 
-            // Get the base product slug (parent product for variations)
             $product_slug = $product->get_slug();
 
-            // If this is a variation, get the parent product's slug instead
             if ($product->is_type('variation')) {
                 $parent_product = wc_get_product($product->get_parent_id());
                 if ($parent_product) {
@@ -1060,7 +1058,7 @@ class EHX_WooCommerce_Integration
             }
 
             $item_data = array(
-                'product' => $product_slug, // Use parent slug for variations
+                'product' => $product_slug,
                 'quantity' => $item->get_quantity(),
                 'setup_price' => 0,
             );
@@ -1073,6 +1071,7 @@ class EHX_WooCommerce_Integration
                     case 'color':
                     case 'colour':
                     case 'colours':
+                    case 'colors':
                     case 'pa_color':
                     case 'pa_colour':
                         $item_data['color'] = ucfirst(strtolower(sanitize_text_field($meta->value)));
@@ -1082,13 +1081,16 @@ class EHX_WooCommerce_Integration
                         $item_data['quantity_color'] = ucfirst(strtolower(sanitize_text_field($meta->value)));
                         break;
                     case 'size':
+                    case 'poster_size':
                     case 'poster-size':
                     case 'pa_size':
+                    case 'pa_poster_size':
+                    case 'pa_poster-size':
                         $item_data['size'] = $this->get_attribute_label($meta->value, 'pa_size');
                         break;
                     case 'fitting':
                     case 'pa_fitting':
-                        $item_data['fitting'] = ucwords(strtolower(sanitize_text_field($meta->value)));
+                        $item_data['fitting'] = $this->get_attribute_label($meta->value, 'pa_fitting');
                         break;
                 }
             }
@@ -1103,11 +1105,13 @@ class EHX_WooCommerce_Integration
                         case 'color':
                         case 'colours':
                         case 'colour':
+                        case 'colors':
                             if (empty($item_data['color'])) {
                                 $item_data['color'] = ucfirst(strtolower(sanitize_text_field($attr_value)));
                             }
                             break;
                         case 'size':
+                        case 'poster_size':
                         case 'poster-size':
                             if (empty($item_data['size'])) {
                                 $item_data['size'] = $this->get_attribute_label($attr_value, 'pa_size');
@@ -1115,7 +1119,8 @@ class EHX_WooCommerce_Integration
                             break;
                         case 'fitting':
                             if (empty($item_data['fitting'])) {
-                                $item_data['fitting'] = ucwords(strtolower(sanitize_text_field($attr_value)));
+                                // Use get_attribute_label for actual name
+                                $item_data['fitting'] = $this->get_attribute_label($attr_value, 'pa_fitting');
                             }
                             break;
                     }
@@ -1132,6 +1137,7 @@ class EHX_WooCommerce_Integration
                         switch (strtolower($clean_attr_name)) {
                             case 'color':
                             case 'colour':
+                            case 'colors':
                                 if (empty($item_data['color']) && $attribute->is_variation()) {
                                     $selected_value = $product->get_attribute($attr_name);
                                     if ($selected_value) {
@@ -1140,6 +1146,8 @@ class EHX_WooCommerce_Integration
                                 }
                                 break;
                             case 'size':
+                            case 'poster_size':
+                            case 'poster-size':
                                 if (empty($item_data['size']) && $attribute->is_variation()) {
                                     $selected_value = $product->get_attribute($attr_name);
                                     if ($selected_value) {
@@ -1151,7 +1159,8 @@ class EHX_WooCommerce_Integration
                                 if (empty($item_data['fitting']) && $attribute->is_variation()) {
                                     $selected_value = $product->get_attribute($attr_name);
                                     if ($selected_value) {
-                                        $item_data['fitting'] = ucwords(strtolower(sanitize_text_field($selected_value)));
+                                        // Use get_attribute_label for actual name
+                                        $item_data['fitting'] = $this->get_attribute_label($selected_value, $attr_name);
                                     }
                                 }
                                 break;
@@ -1205,10 +1214,10 @@ class EHX_WooCommerce_Integration
         $term = get_term_by('slug', $value, $taxonomy_name);
 
         if ($term && !is_wp_error($term)) {
-            return $term->name; 
+            return $term->name;
         }
 
-     
+
         $term_by_name = get_term_by('name', $value, $taxonomy_name);
 
         if ($term_by_name && !is_wp_error($term_by_name)) {
@@ -1276,8 +1285,6 @@ class EHX_WooCommerce_Integration
             ));
 
             $response = curl_exec($curl);
-            // var_dump($response, 'response');
-            // die();
             curl_close($curl);
 
             if ($response) {
