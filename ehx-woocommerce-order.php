@@ -1061,6 +1061,7 @@ class EHX_WooCommerce_Integration
                 switch ($key) {
                     case 'color':
                     case 'colour':
+                    case 'colours':
                     case 'pa_color':
                     case 'pa_colour':
                         $item_data['color'] = ucfirst(strtolower(sanitize_text_field($meta->value)));
@@ -1070,6 +1071,7 @@ class EHX_WooCommerce_Integration
                         $item_data['quantity_color'] = ucfirst(strtolower(sanitize_text_field($meta->value)));
                         break;
                     case 'size':
+                    case 'poster_size':
                     case 'pa_size':
                         $item_data['size'] = sanitize_text_field($meta->value);
                         break;
@@ -1088,12 +1090,14 @@ class EHX_WooCommerce_Integration
 
                     switch (strtolower($clean_attr_name)) {
                         case 'color':
+                        case 'colours':
                         case 'colour':
                             if (empty($item_data['color'])) {
                                 $item_data['color'] = ucfirst(strtolower(sanitize_text_field($attr_value)));
                             }
                             break;
                         case 'size':
+                        case 'poster_size':
                             if (empty($item_data['size'])) {
                                 $item_data['size'] = sanitize_text_field($attr_value);
                             }
@@ -1220,6 +1224,8 @@ class EHX_WooCommerce_Integration
             ));
 
             $response = curl_exec($curl);
+            // var_dump($response, 'response');
+            // die();
             curl_close($curl);
 
             if ($response) {
