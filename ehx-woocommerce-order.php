@@ -1048,8 +1048,19 @@ class EHX_WooCommerce_Integration
             $product = $item->get_product();
             if (!$product) continue;
 
+            // Get the base product slug (parent product for variations)
+            $product_slug = $product->get_slug();
+
+            // If this is a variation, get the parent product's slug instead
+            if ($product->is_type('variation')) {
+                $parent_product = wc_get_product($product->get_parent_id());
+                if ($parent_product) {
+                    $product_slug = $parent_product->get_slug();
+                }
+            }
+
             $item_data = array(
-                'product' => $product->get_slug(),
+                'product' => $product_slug, // Use parent slug for variations
                 'quantity' => $item->get_quantity(),
                 'setup_price' => 0,
             );
@@ -1071,9 +1082,9 @@ class EHX_WooCommerce_Integration
                         $item_data['quantity_color'] = ucfirst(strtolower(sanitize_text_field($meta->value)));
                         break;
                     case 'size':
-                    case 'poster_size':
+                    case 'poster-size':
                     case 'pa_size':
-                        $item_data['size'] = sanitize_text_field($meta->value);
+                        $item_data['size'] = $this->get_attribute_label($meta->value, 'pa_size');
                         break;
                     case 'fitting':
                     case 'pa_fitting':
@@ -1097,9 +1108,9 @@ class EHX_WooCommerce_Integration
                             }
                             break;
                         case 'size':
-                        case 'poster_size':
+                        case 'poster-size':
                             if (empty($item_data['size'])) {
-                                $item_data['size'] = sanitize_text_field($attr_value);
+                                $item_data['size'] = $this->get_attribute_label($attr_value, 'pa_size');
                             }
                             break;
                         case 'fitting':
@@ -1132,7 +1143,7 @@ class EHX_WooCommerce_Integration
                                 if (empty($item_data['size']) && $attribute->is_variation()) {
                                     $selected_value = $product->get_attribute($attr_name);
                                     if ($selected_value) {
-                                        $item_data['size'] = sanitize_text_field($selected_value);
+                                        $item_data['size'] = $this->get_attribute_label($selected_value, $attr_name);
                                     }
                                 }
                                 break;
@@ -1167,6 +1178,47 @@ class EHX_WooCommerce_Integration
             'location_key' => get_option('ehx_wc_location_key', ''),
             'items' => $items
         );
+    }
+
+    /**
+     * Get attribute actual name/label from slug or value
+     */
+    private function get_attribute_label($value, $attribute_name = '')
+    {
+        if (empty($value)) {
+            return '';
+        }
+
+        if (empty($attribute_name)) {
+            $attribute_name = 'pa_size';
+        }
+
+        $clean_attribute_name = str_replace('attribute_', '', $attribute_name);
+
+
+        if (strpos($clean_attribute_name, 'pa_') !== 0 && in_array($clean_attribute_name, ['size', 'color', 'colour', 'fitting'])) {
+            $taxonomy_name = 'pa_' . str_replace('pa_', '', $clean_attribute_name);
+        } else {
+            $taxonomy_name = $clean_attribute_name;
+        }
+
+        $term = get_term_by('slug', $value, $taxonomy_name);
+
+        if ($term && !is_wp_error($term)) {
+            return $term->name; 
+        }
+
+     
+        $term_by_name = get_term_by('name', $value, $taxonomy_name);
+
+        if ($term_by_name && !is_wp_error($term_by_name)) {
+            return $term_by_name->name;
+        }
+
+        if (!preg_match('/^[a-z0-9\-_]+$/', $value)) {
+            return sanitize_text_field($value);
+        }
+        return ucwords(str_replace(array('-', '_'), ' ', $value));
     }
     /**
      * Process queued orders
