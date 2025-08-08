@@ -1181,14 +1181,14 @@ class EHX_WooCommerce_Integration
         $items[] = $item_data;
     }
 
-    $artwork = $order->get_meta('_billing_woocom11');
-    $company = $order->get_meta('_billing_woocom10');
+    $artwork = $order->get_meta('billing_woocom11');
+    $company = $order->get_meta('billing_woocom10');
 
     if (empty($artwork)) {
-        $artwork = get_post_meta($order->get_id(), '_billing_woocom11', true);
+        $artwork = get_post_meta($order->get_id(), 'billing_woocom11', true);
     }
     if (empty($company)) {
-        $company = get_post_meta($order->get_id(), '_billing_woocom10', true);
+        $company = get_post_meta($order->get_id(), 'billing_woocom10', true);
     }
 
     return array(
