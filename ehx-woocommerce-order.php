@@ -1178,7 +1178,7 @@ class EHX_WooCommerce_Integration
             $item_data['quantity_color'] = $item_data['quantity_color'] ?? '';
             $item_data['size'] = $item_data['size'] ?? '';
             $item_data['fitting'] = $item_data['fitting'] ?? '';
-
+            $item_data['files'] = $billing['wooccm11'] ?? [] ;
             $items[] = $item_data;
         }
 
@@ -1190,6 +1190,7 @@ class EHX_WooCommerce_Integration
             'referance' => 'Order #' . $order->get_order_number(),
             'payment_method' => $order->get_payment_method_title(),
             'location_key' => get_option('ehx_wc_location_key', ''),
+
             // Add billing address fields
             'address_line_1' => $billing['address_1'] ?? '',
             'address_line_2' => $billing['address_2'] ?? '',
