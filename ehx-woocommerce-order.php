@@ -735,7 +735,12 @@ class EHX_WooCommerce_Integration
                 echo "<tr><td style='padding: 5px 10px; font-weight: bold; width: 150px;'>Reference:</td><td style='padding: 5px 10px;'>" . esc_html($order_data['referance'] ?? '') . "</td></tr>";
                 echo "<tr style='background: #f5f5f5;'><td style='padding: 5px 10px; font-weight: bold;'>Payment Method:</td><td style='padding: 5px 10px;'>" . esc_html($order_data['payment_method'] ?? '') . "</td></tr>";
                 echo "<tr><td style='padding: 5px 10px; font-weight: bold;'>Location Key:</td><td style='padding: 5px 10px;'>" . esc_html($order_data['location_key'] ?? '') . "</td></tr>";
-
+                echo "<tr><td style='padding: 5px 10px; font-weight: bold;'>Address 1:</td><td style='padding: 5px 10px;'>" . esc_html($order_data['address_line_1'] ?? '') . "</td></tr>";
+                echo "<tr style='background: #f5f5f5;'><td style='padding: 5px 10px; font-weight: bold;'>Address 2:</td><td style='padding: 5px 10px;'>" . esc_html($order_data['address_line_2'] ?? '') . "</td></tr>";
+                echo "<tr><td style='padding: 5px 10px; font-weight: bold;'>City:</td><td style='padding: 5px 10px;'>" . esc_html($order_data['city'] ?? '') . "</td></tr>";
+                echo "<tr style='background: #f5f5f5;'><td style='padding: 5px 10px; font-weight: bold;'>Postcode:</td><td style='padding: 5px 10px;'>" . esc_html($order_data['postcode'] ?? '') . "</td></tr>";
+                echo "<tr><td style='padding: 5px 10px; font-weight: bold;'>Country:</td><td style='padding: 5px 10px;'>" . esc_html($order_data['country'] ?? '') . "</td></tr>";
+                echo "<tr style='background: #f5f5f5;'><td style='padding: 5px 10px; font-weight: bold;'>State:</td><td style='padding: 5px 10px;'>" . esc_html($order_data['state'] ?? '') . "</td></tr>";
                 echo "</table>";
                 echo "</div>";
 
@@ -1181,10 +1186,17 @@ class EHX_WooCommerce_Integration
             'name' => trim($billing['first_name'] . ' ' . $billing['last_name']),
             'email' => $billing['email'],
             'telephone' => $billing['phone'],
-            'company' => $billing['company'],
+            'company' => $billing['wooccm10'],
             'referance' => 'Order #' . $order->get_order_number(),
             'payment_method' => $order->get_payment_method_title(),
             'location_key' => get_option('ehx_wc_location_key', ''),
+            // Add billing address fields
+            'address_line_1' => $billing['address_1'] ?? '',
+            'address_line_2' => $billing['address_2'] ?? '',
+            'city' => $billing['city'] ?? '',
+            'state' => $billing['state'] ?? '',
+            'postcode' => $billing['postcode'] ?? '',
+            'country' => $billing['country'] ?? '',
             'items' => $items
         );
     }
