@@ -3,7 +3,7 @@
 /**
  * Plugin Name: EHx WooCommerce Order
  * Description: Complete integration for WooCommerce - syncs products from API and sends order quotes to API
- * Version: 1.0.0
+ * Version: 1.0.1
  * Author:  EH Studio
  */
 
@@ -735,6 +735,7 @@ class EHX_WooCommerce_Integration
                 echo "<tr><td style='padding: 5px 10px; font-weight: bold; width: 150px;'>Reference:</td><td style='padding: 5px 10px;'>" . esc_html($order_data['referance'] ?? '') . "</td></tr>";
                 echo "<tr style='background: #f5f5f5;'><td style='padding: 5px 10px; font-weight: bold;'>Payment Method:</td><td style='padding: 5px 10px;'>" . esc_html($order_data['payment_method'] ?? '') . "</td></tr>";
                 echo "<tr><td style='padding: 5px 10px; font-weight: bold;'>Location Key:</td><td style='padding: 5px 10px;'>" . esc_html($order_data['location_key'] ?? '') . "</td></tr>";
+                echo "<tr style='background: #f5f5f5;'><td style='padding: 5px 10px; font-weight: bold;'>Artwork:</td><td style='padding: 5px 10px;'>" . esc_html($order_data['artwork']) . "</td></tr>";
                 echo "<tr><td style='padding: 5px 10px; font-weight: bold;'>Address 1:</td><td style='padding: 5px 10px;'>" . esc_html($order_data['address_line_1'] ?? '') . "</td></tr>";
                 echo "<tr style='background: #f5f5f5;'><td style='padding: 5px 10px; font-weight: bold;'>Address 2:</td><td style='padding: 5px 10px;'>" . esc_html($order_data['address_line_2'] ?? '') . "</td></tr>";
                 echo "<tr><td style='padding: 5px 10px; font-weight: bold;'>City:</td><td style='padding: 5px 10px;'>" . esc_html($order_data['city'] ?? '') . "</td></tr>";
@@ -1178,7 +1179,7 @@ class EHX_WooCommerce_Integration
             $item_data['quantity_color'] = $item_data['quantity_color'] ?? '';
             $item_data['size'] = $item_data['size'] ?? '';
             $item_data['fitting'] = $item_data['fitting'] ?? '';
-            $item_data['files'] = $billing['wooccm11'] ?? [] ;
+            
             $items[] = $item_data;
         }
 
@@ -1186,6 +1187,7 @@ class EHX_WooCommerce_Integration
             'name' => trim($billing['first_name'] . ' ' . $billing['last_name']),
             'email' => $billing['email'],
             'telephone' => $billing['phone'],
+            'artwork' => $billing['wooccm11'] ?? '',
             'company' => $billing['wooccm10'],
             'referance' => 'Order #' . $order->get_order_number(),
             'payment_method' => $order->get_payment_method_title(),
