@@ -1045,164 +1045,172 @@ class EHX_WooCommerce_Integration
     /**
      * Prepare order data for API
      */
-    private function prepare_order_data($order)
-    {
-        $billing = $order->get_address('billing');
+   private function prepare_order_data($order)
+{
+    $billing = $order->get_address('billing');
 
-        $items = array();
-        foreach ($order->get_items() as $item) {
-            $product = $item->get_product();
-            if (!$product) continue;
+    $items = array();
+    foreach ($order->get_items() as $item) {
+        $product = $item->get_product();
+        if (!$product) continue;
 
-            $product_slug = $product->get_slug();
+        $product_slug = $product->get_slug();
 
-            if ($product->is_type('variation')) {
-                $parent_product = wc_get_product($product->get_parent_id());
-                if ($parent_product) {
-                    $product_slug = $parent_product->get_slug();
-                }
+        if ($product->is_type('variation')) {
+            $parent_product = wc_get_product($product->get_parent_id());
+            if ($parent_product) {
+                $product_slug = $parent_product->get_slug();
             }
+        }
 
-            $item_data = array(
-                'product' => $product_slug,
-                'quantity' => $item->get_quantity(),
-                'setup_price' => 0,
-            );
+        $item_data = array(
+            'product' => $product_slug,
+            'quantity' => $item->get_quantity(),
+            'setup_price' => 0,
+        );
 
-            $meta_data = $item->get_meta_data();
-            foreach ($meta_data as $meta) {
-                $key = strtolower(str_replace(' ', '_', trim($meta->key)));
+        $meta_data = $item->get_meta_data();
+        foreach ($meta_data as $meta) {
+            $key = strtolower(str_replace(' ', '_', trim($meta->key)));
 
-                switch ($key) {
+            switch ($key) {
+                case 'color':
+                case 'colour':
+                case 'colours':
+                case 'colors':
+                case 'pa_color':
+                case 'pa_colour':
+                    $item_data['color'] = ucfirst(strtolower(sanitize_text_field($meta->value)));
+                    break;
+                case 'quantity_color':
+                case 'quantity_colour':
+                    $item_data['quantity_color'] = ucfirst(strtolower(sanitize_text_field($meta->value)));
+                    break;
+                case 'size':
+                case 'poster_size':
+                case 'poster-size':
+                case 'pa_size':
+                case 'pa_poster_size':
+                case 'pa_poster-size':
+                    $item_data['size'] = $this->get_attribute_label($meta->value, 'pa_size');
+                    break;
+                case 'fitting':
+                case 'pa_fitting':
+                    $item_data['fitting'] = $this->get_attribute_label($meta->value, 'pa_fitting');
+                    break;
+            }
+        }
+
+        if ($product->is_type('variation')) {
+            $variation_attributes = $product->get_variation_attributes();
+            foreach ($variation_attributes as $attr_name => $attr_value) {
+                $clean_attr_name = str_replace('attribute_', '', $attr_name);
+                $clean_attr_name = str_replace('pa_', '', $clean_attr_name);
+
+                switch (strtolower($clean_attr_name)) {
                     case 'color':
-                    case 'colour':
                     case 'colours':
+                    case 'colour':
                     case 'colors':
-                    case 'pa_color':
-                    case 'pa_colour':
-                        $item_data['color'] = ucfirst(strtolower(sanitize_text_field($meta->value)));
-                        break;
-                    case 'quantity_color':
-                    case 'quantity_colour':
-                        $item_data['quantity_color'] = ucfirst(strtolower(sanitize_text_field($meta->value)));
+                        if (empty($item_data['color'])) {
+                            $item_data['color'] = ucfirst(strtolower(sanitize_text_field($attr_value)));
+                        }
                         break;
                     case 'size':
                     case 'poster_size':
                     case 'poster-size':
-                    case 'pa_size':
-                    case 'pa_poster_size':
-                    case 'pa_poster-size':
-                        $item_data['size'] = $this->get_attribute_label($meta->value, 'pa_size');
+                        if (empty($item_data['size'])) {
+                            $item_data['size'] = $this->get_attribute_label($attr_value, 'pa_size');
+                        }
                         break;
                     case 'fitting':
-                    case 'pa_fitting':
-                        $item_data['fitting'] = $this->get_attribute_label($meta->value, 'pa_fitting');
+                        if (empty($item_data['fitting'])) {
+                            $item_data['fitting'] = $this->get_attribute_label($attr_value, 'pa_fitting');
+                        }
                         break;
                 }
             }
+        }
 
-            if ($product->is_type('variation')) {
-                $variation_attributes = $product->get_variation_attributes();
-                foreach ($variation_attributes as $attr_name => $attr_value) {
-                    $clean_attr_name = str_replace('attribute_', '', $attr_name);
-                    $clean_attr_name = str_replace('pa_', '', $clean_attr_name);
+        if ($product->get_parent_id()) {
+            $parent_product = wc_get_product($product->get_parent_id());
+            if ($parent_product) {
+                $product_attributes = $parent_product->get_attributes();
+                foreach ($product_attributes as $attr_name => $attribute) {
+                    $clean_attr_name = str_replace('pa_', '', $attr_name);
 
                     switch (strtolower($clean_attr_name)) {
                         case 'color':
-                        case 'colours':
                         case 'colour':
                         case 'colors':
-                            if (empty($item_data['color'])) {
-                                $item_data['color'] = ucfirst(strtolower(sanitize_text_field($attr_value)));
+                            if (empty($item_data['color']) && $attribute->is_variation()) {
+                                $selected_value = $product->get_attribute($attr_name);
+                                if ($selected_value) {
+                                    $item_data['color'] = ucfirst(strtolower(sanitize_text_field($selected_value)));
+                                }
                             }
                             break;
                         case 'size':
                         case 'poster_size':
                         case 'poster-size':
-                            if (empty($item_data['size'])) {
-                                $item_data['size'] = $this->get_attribute_label($attr_value, 'pa_size');
+                            if (empty($item_data['size']) && $attribute->is_variation()) {
+                                $selected_value = $product->get_attribute($attr_name);
+                                if ($selected_value) {
+                                    $item_data['size'] = $this->get_attribute_label($selected_value, $attr_name);
+                                }
                             }
                             break;
                         case 'fitting':
-                            if (empty($item_data['fitting'])) {
-                                // Use get_attribute_label for actual name
-                                $item_data['fitting'] = $this->get_attribute_label($attr_value, 'pa_fitting');
+                            if (empty($item_data['fitting']) && $attribute->is_variation()) {
+                                $selected_value = $product->get_attribute($attr_name);
+                                if ($selected_value) {
+                                    $item_data['fitting'] = $this->get_attribute_label($selected_value, $attr_name);
+                                }
                             }
                             break;
                     }
                 }
             }
-
-            if ($product->get_parent_id()) {
-                $parent_product = wc_get_product($product->get_parent_id());
-                if ($parent_product) {
-                    $product_attributes = $parent_product->get_attributes();
-                    foreach ($product_attributes as $attr_name => $attribute) {
-                        $clean_attr_name = str_replace('pa_', '', $attr_name);
-
-                        switch (strtolower($clean_attr_name)) {
-                            case 'color':
-                            case 'colour':
-                            case 'colors':
-                                if (empty($item_data['color']) && $attribute->is_variation()) {
-                                    $selected_value = $product->get_attribute($attr_name);
-                                    if ($selected_value) {
-                                        $item_data['color'] = ucfirst(strtolower(sanitize_text_field($selected_value)));
-                                    }
-                                }
-                                break;
-                            case 'size':
-                            case 'poster_size':
-                            case 'poster-size':
-                                if (empty($item_data['size']) && $attribute->is_variation()) {
-                                    $selected_value = $product->get_attribute($attr_name);
-                                    if ($selected_value) {
-                                        $item_data['size'] = $this->get_attribute_label($selected_value, $attr_name);
-                                    }
-                                }
-                                break;
-                            case 'fitting':
-                                if (empty($item_data['fitting']) && $attribute->is_variation()) {
-                                    $selected_value = $product->get_attribute($attr_name);
-                                    if ($selected_value) {
-                                        // Use get_attribute_label for actual name
-                                        $item_data['fitting'] = $this->get_attribute_label($selected_value, $attr_name);
-                                    }
-                                }
-                                break;
-                        }
-                    }
-                }
-            }
-
-            $item_data['color'] = $item_data['color'] ?? '';
-            $item_data['quantity_color'] = $item_data['quantity_color'] ?? '';
-            $item_data['size'] = $item_data['size'] ?? '';
-            $item_data['fitting'] = $item_data['fitting'] ?? '';
-            
-            $items[] = $item_data;
         }
 
-        return array(
-            'name' => trim($billing['first_name'] . ' ' . $billing['last_name']),
-            'email' => $billing['email'],
-            'telephone' => $billing['phone'],
-            'artwork' => $billing['wooccm11'] ?? '',
-            'company' => $billing['wooccm10'],
-            'referance' => 'Order #' . $order->get_order_number(),
-            'payment_method' => $order->get_payment_method_title(),
-            'location_key' => get_option('ehx_wc_location_key', ''),
-
-            // Add billing address fields
-            'address_line_1' => $billing['address_1'] ?? '',
-            'address_line_2' => $billing['address_2'] ?? '',
-            'city' => $billing['city'] ?? '',
-            'state' => $billing['state'] ?? '',
-            'postcode' => $billing['postcode'] ?? '',
-            'country' => $billing['country'] ?? '',
-            'items' => $items
-        );
+        $item_data['color'] = $item_data['color'] ?? '';
+        $item_data['quantity_color'] = $item_data['quantity_color'] ?? '';
+        $item_data['size'] = $item_data['size'] ?? '';
+        $item_data['fitting'] = $item_data['fitting'] ?? '';
+        
+        $items[] = $item_data;
     }
+
+    $artwork = $order->get_meta('_billing_woocom11');
+    $company = $order->get_meta('_billing_woocom10');
+
+    if (empty($artwork)) {
+        $artwork = get_post_meta($order->get_id(), '_billing_woocom11', true);
+    }
+    if (empty($company)) {
+        $company = get_post_meta($order->get_id(), '_billing_woocom10', true);
+    }
+
+    return array(
+        'name' => trim($billing['first_name'] . ' ' . $billing['last_name']),
+        'email' => $billing['email'],
+        'telephone' => $billing['phone'],
+        'artwork' => $artwork ?? '',
+        'company' => $company ?? '',
+        'referance' => 'Order #' . $order->get_order_number(),
+        'payment_method' => $order->get_payment_method_title(),
+        'location_key' => get_option('ehx_wc_location_key', ''),
+
+        // Add billing address fields
+        'address_line_1' => $billing['address_1'] ?? '',
+        'address_line_2' => $billing['address_2'] ?? '',
+        'city' => $billing['city'] ?? '',
+        'state' => $billing['state'] ?? '',
+        'postcode' => $billing['postcode'] ?? '',
+        'country' => $billing['country'] ?? '',
+        'items' => $items
+    );
+}
 
     /**
      * Get attribute actual name/label from slug or value
