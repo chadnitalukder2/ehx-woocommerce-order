@@ -1300,8 +1300,8 @@ class EHX_WooCommerce_Integration
 
         foreach ($orders as $queue_item) {
             $order_data = json_decode($queue_item->order_data, true);
-//  error_log('Raw Order Data from Queue: ' . print_r($order_data, true));
-//  error_log('JSON Sent to API: ' . json_encode($order_data));
+            //  error_log('Raw Order Data from Queue: ' . print_r($order_data, true));
+            //  error_log('JSON Sent to API: ' . json_encode($order_data));
             // Prepare URL with location parameter
             $api_url = $endpoint;
             if (!empty($location_key)) {
