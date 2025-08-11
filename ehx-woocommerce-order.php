@@ -1212,6 +1212,10 @@ class EHX_WooCommerce_Integration
         //     $company = get_post_meta($order->get_id(), 'billing_woocom10', true);
         // }
 
+        $country_code = $billing['country'] ?? '';
+        $countries = new WC_Countries();
+        $country_name = $countries->get_countries()[$country_code] ?? $country_code;
+
         return array(
             'name' => trim($billing['first_name'] . ' ' . $billing['last_name']),
             'email' => $billing['email'],
@@ -1222,13 +1226,12 @@ class EHX_WooCommerce_Integration
             'payment_method' => $order->get_payment_method_title(),
             'location_key' => get_option('ehx_wc_location_key', ''),
 
-            // Add billing address fields
             'address_line_1' => $billing['address_1'] ?? '',
             'address_line_2' => $billing['address_2'] ?? '',
             'city' => $billing['city'] ?? '',
             'state' => $billing['state'] ?? '',
             'postcode' => $billing['postcode'] ?? '',
-            'country' => $billing['country'] ?? '',
+            'country' => $country_name ?? '',
             'items' => $items
         );
     }
