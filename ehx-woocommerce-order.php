@@ -856,6 +856,19 @@ class EHX_WooCommerce_Integration
      */
     public function create_quote_immediately($order_id)
     {
+        global $wpdb;
+        $table_name = $wpdb->prefix . 'ehx_wc_order_queue';
+
+        // Check if order already exists in queue
+        $existing = $wpdb->get_var($wpdb->prepare(
+            "SELECT id FROM $table_name WHERE order_id = %d",
+            $order_id
+        ));
+
+        if ($existing) {
+            return;
+        }
+
         if (!get_option('ehx_wc_quote_enabled', 1)) {
             return;
         }
@@ -1146,7 +1159,7 @@ class EHX_WooCommerce_Integration
             'name' => trim($billing['first_name'] . ' ' . $billing['last_name']),
             'email' => $billing['email'],
             'telephone' => $billing['phone'],
-            'artwork' => $artwork ,
+            'artwork' => $artwork,
             'company' => $company ?? '',
             'referance' => 'Order #' . $order->get_order_number(),
             'payment_method' => $order->get_payment_method_title(),
