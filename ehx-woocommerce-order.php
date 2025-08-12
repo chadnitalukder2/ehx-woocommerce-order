@@ -3,7 +3,7 @@
 /**
  * Plugin Name: EHx WooCommerce Order
  * Description: Complete integration for WooCommerce - syncs products from API and sends order quotes to API
- * Version: 1.0.3
+ * Version: 1.0.4
  * Author:  EH Studio
  */
 
@@ -24,19 +24,11 @@ class EHX_WooCommerce_Integration
         add_action('admin_menu', array($this, 'add_admin_menu'));
         add_action('admin_init', array($this, 'settings_init'));
 
-        // Quote API hooks
-        // add_action('woocommerce_order_status_processing', array($this, 'queue_order_for_api'));
-        // add_action('woocommerce_order_status_completed', array($this, 'queue_order_for_api'));
-        add_action('woocommerce_new_order', array($this, 'queue_order_for_api'));
+        // Quote API hooks - creates quote immediately
+        add_action('woocommerce_order_status_changed', array($this, 'create_quote_immediately'));
 
         // Product sync hooks
         add_action('wp_ajax_sync_products', array($this, 'sync_products_ajax'));
-
-        // Schedule cron jobs
-        add_action('wp', array($this, 'schedule_crons'));
-        add_action('ehx_wc_process_orders', array($this, 'process_queued_orders'));
-        add_action('ehx_wc_sync_products', array($this, 'sync_products'));
-
         add_action('wp_ajax_reset_product_sync', array($this, 'reset_product_sync_ajax'));
 
         // Plugin activation/deactivation
@@ -101,8 +93,6 @@ class EHX_WooCommerce_Integration
         register_setting($this->option_group, 'ehx_wc_location_key');
         register_setting($this->option_group, 'ehx_wc_quote_enabled');
         register_setting($this->option_group, 'ehx_wc_sync_enabled');
-        register_setting($this->option_group, 'ehx_wc_quote_interval');
-        register_setting($this->option_group, 'ehx_wc_sync_interval');
 
         // Quote API Section
         add_settings_section(
@@ -128,14 +118,6 @@ class EHX_WooCommerce_Integration
             'ehx_wc_quote_section'
         );
 
-        add_settings_field(
-            'ehx_wc_quote_interval',
-            __('Quote Processing Interval (minutes)', 'textdomain'),
-            array($this, 'quote_interval_render'),
-            'ehx_wc_integration',
-            'ehx_wc_quote_section'
-        );
-
         // Product Sync Section
         add_settings_section(
             'ehx_wc_sync_section',
@@ -156,14 +138,6 @@ class EHX_WooCommerce_Integration
             'ehx_wc_product_endpoint',
             __('Product API Endpoint URL', 'textdomain'),
             array($this, 'product_endpoint_render'),
-            'ehx_wc_integration',
-            'ehx_wc_sync_section'
-        );
-
-        add_settings_field(
-            'ehx_wc_sync_interval',
-            __('Sync Interval', 'textdomain'),
-            array($this, 'sync_interval_render'),
             'ehx_wc_integration',
             'ehx_wc_sync_section'
         );
@@ -198,17 +172,17 @@ class EHX_WooCommerce_Integration
      */
     public function quote_section_callback()
     {
-        //  echo __('Configure settings for sending order quotes to the API:', 'textdomain');
+        // Empty callback
     }
 
     public function sync_section_callback()
     {
-        //  echo __('Configure settings for syncing products from the API:', 'textdomain');
+        // Empty callback
     }
 
     public function auth_section_callback()
     {
-        //   echo __('Authentication settings used for both quote and product sync APIs:', 'textdomain');
+        // Empty callback
     }
 
     /**
@@ -237,7 +211,6 @@ class EHX_WooCommerce_Integration
         $endpoint = get_option('ehx_wc_quote_endpoint', 'https://www.portal.immersivebrands.co.uk/api/quote');
     ?>
         <input type='url' name='ehx_wc_quote_endpoint' value='<?php echo esc_attr($endpoint); ?>' style='width: 400px;' required>
-        <!-- <p class="description">Enter the full URL of your quote API endpoint</p> -->
     <?php
     }
 
@@ -246,7 +219,6 @@ class EHX_WooCommerce_Integration
         $endpoint = get_option('ehx_wc_product_endpoint', 'https://www.portal.immersivebrands.co.uk/api/product');
     ?>
         <input type='url' name='ehx_wc_product_endpoint' value='<?php echo esc_attr($endpoint); ?>' style='width: 400px;' required>
-        <!-- <p class="description">Enter the full URL of your product API endpoint</p> -->
     <?php
     }
 
@@ -255,7 +227,6 @@ class EHX_WooCommerce_Integration
         $bearer_token = get_option('ehx_wc_bearer_token', '');
     ?>
         <input type='password' name='ehx_wc_bearer_token' value='<?php echo esc_attr($bearer_token); ?>' style='width: 500px;' required>
-        <!-- <p class="description">Enter your API Bearer Token (e.g., 5|XFQGvYYXQWK5QjhOvUqzHNVDVGfpilHcIbuatKBI)</p> -->
     <?php
     }
 
@@ -264,34 +235,6 @@ class EHX_WooCommerce_Integration
         $location_key = get_option('ehx_wc_location_key', '');
     ?>
         <input type='text' name='ehx_wc_location_key' value='<?php echo esc_attr($location_key); ?>' style='width: 300px;' required>
-        <!-- <p class="description">Enter your location identifier (e.g., store ID, branch code, location name)</p> -->
-    <?php
-    }
-
-    public function quote_interval_render()
-    {
-        $interval = get_option('ehx_wc_quote_interval', 30);
-    ?>
-        <input type='number' name='ehx_wc_quote_interval' value='<?php echo esc_attr($interval); ?>' min='1' max='1440' required>
-        <!-- <p class="description">How often to process order quotes (in minutes). Default: 30 minutes</p> -->
-    <?php
-    }
-
-    public function sync_interval_render()
-    {
-        $interval = get_option('ehx_wc_sync_interval', 'hourly');
-        $intervals = array(
-            'hourly' => 'Every Hour',
-            'twicedaily' => 'Twice Daily',
-            'daily' => 'Daily'
-        );
-    ?>
-        <select name='ehx_wc_sync_interval' required>
-            <?php foreach ($intervals as $key => $label): ?>
-                <option value='<?php echo esc_attr($key); ?>' <?php selected($interval, $key); ?>><?php echo esc_html($label); ?></option>
-            <?php endforeach; ?>
-        </select>
-        <p class="description">How often to sync products from the API</p>
     <?php
     }
 
@@ -312,36 +255,8 @@ class EHX_WooCommerce_Integration
             </form>
 
             <div class="card" style="border: none;  box-shadow: none; margin-top: 20px; max-width: 100%; padding: 20px;">
-
-                <?php
-                // Schedule info
-                $next_order_processing = wp_next_scheduled('ehx_wc_process_orders');
-                $next_product_sync = wp_next_scheduled('ehx_wc_sync_products');
-
-                // if ($next_order_processing || $next_product_sync) {
-                //     echo "<div class='ehx-schedule-info' style='margin-bottom: 20px; padding: 12px; background: #fff8e3; border: 1px solid #fff8e3;'>";
-                //     if ($next_order_processing) {
-                //         echo "<p style='margin-top: 0;'><strong>Next Order Processing:</strong> " . date('Y-m-d H:i:s', $next_order_processing) . "</p>";
-                //     }
-                //     if ($next_product_sync) {
-                //         echo "<p style='margin: 0px;'><strong>Next Product Sync:</strong> " . date('Y-m-d H:i:s', $next_product_sync) . "</p>";
-                //     }
-                //     echo "</div>";
-                // } 
-                ?>
                 <h2>Manual Actions</h2>
                 <table class="form-table">
-                    <tr>
-                        <th scope="row">Sync Orders</th>
-                        <td>
-                            <form method="post" action="" style="display: inline;">
-                                <?php wp_nonce_field('ehx_wc_manual_process', 'ehx_wc_nonce'); ?>
-                                <input type="hidden" name="action" value="manual_process">
-                                <input type="submit" class="button button-secondary" value="Sync Orders Now">
-                            </form>
-                            <p class="description">Process all pending order quotes immediately</p>
-                        </td>
-                    </tr>
                     <tr>
                         <th scope="row">Sync Products</th>
                         <td>
@@ -363,8 +278,6 @@ class EHX_WooCommerce_Integration
                 <h2>Order Queue Status</h2>
                 <?php $this->display_queue_status(); ?>
             </div>
-
-
         </div>
 
         <script>
@@ -381,12 +294,8 @@ class EHX_WooCommerce_Integration
                             action: 'sync_products',
                             nonce: '<?php echo wp_create_nonce('sync_products_nonce'); ?>'
                         },
-
-                      
                         success: function(response) {
-                      
                             if (response.success) {
-                                error_log('Sync Products Response: ' + JSON.stringify(response));
                                 $('#sync-status').html('<p style="color: green;">' + response.data.message + '</p>');
                             } else {
                                 $('#sync-status').html('<p style="color: red;">Error: ' + response.data + '</p>');
@@ -420,7 +329,6 @@ class EHX_WooCommerce_Integration
                         success: function(response) {
                             if (response.success) {
                                 $('#sync-status').html('<p style="color: green;">' + response.data.message + '</p>');
-                                // Reload page to show updated stats
                                 setTimeout(function() {
                                     location.reload();
                                 }, 1500);
@@ -439,21 +347,23 @@ class EHX_WooCommerce_Integration
             });
         </script>
         <?php
+    }
 
-        // Handle manual order processing
-        if (
-            isset($_POST['action']) && $_POST['action'] === 'manual_process' &&
-            wp_verify_nonce($_POST['ehx_wc_nonce'], 'ehx_wc_manual_process')
-        ) {
-            $this->process_queued_orders();
-            echo '<div class="notice notice-success"><p>Orders processed successfully!</p></div>';
-        }
+    public function process_order($queue_id)
+    {
+        global $wpdb;
+        $table_name = $wpdb->prefix . 'ehx_wc_order_queue';
+
+        $order_data = $wpdb->get_var($wpdb->prepare("SELECT order_data FROM $table_name WHERE id = %d", $queue_id));
+        $order_data = json_decode($order_data, true);
+        $order_id = $wpdb->get_var($wpdb->prepare("SELECT order_id FROM $table_name WHERE id = %d", $queue_id));
+
+        $this->send_quote_to_api($order_id, $order_data);
     }
 
     /**
      * Display queue status
      */
-    //===========================start=================================
     private function display_queue_status()
     {
         global $wpdb;
@@ -471,6 +381,11 @@ class EHX_WooCommerce_Integration
                 array('%d'),
                 array('%d')
             );
+
+            // if processed, send order to API
+            if ($updated && $processed) {
+                $this->process_order($queue_id);
+            }
 
             if ($updated !== false) {
                 echo '<div class="notice notice-success is-dismissible"><p>Queue item updated successfully!</p></div>';
@@ -497,7 +412,6 @@ class EHX_WooCommerce_Integration
                         "UPDATE $table_name SET processed = 0 WHERE id IN ($placeholders)",
                         ...$queue_ids
                     ));
-                    // echo '<div class="notice notice-success is-dismissible"><p>Selected items marked as unprocessed!</p></div>';
                 } elseif ($action === 'delete') {
                     $wpdb->query($wpdb->prepare(
                         "DELETE FROM $table_name WHERE id IN ($placeholders)",
@@ -649,7 +563,6 @@ class EHX_WooCommerce_Integration
         echo "<div class='alignleft actions bulkactions'>";
         echo "<select name='bulk_action'>";
         echo "<option value=''>Bulk Actions</option>";
-        // echo "<option value='mark_processed'>Mark as Processed</option>";
         echo "<option value='mark_unprocessed'>Mark as Unprocessed</option>";
         echo "<option value='delete'>Delete</option>";
         echo "</select>";
@@ -702,18 +615,17 @@ class EHX_WooCommerce_Integration
             echo "</td>";
             echo "<td>";
 
-            if ($item->processed) {
-                // Quick status toggle
-                echo "<form method='post' style='display: inline-block; margin-right: 5px;'>";
-                wp_nonce_field('ehx_wc_update_processed', 'ehx_wc_nonce');
-                echo "<input type='hidden' name='update_processed' value='1'>";
-                echo "<input type='hidden' name='queue_id' value='{$item->id}'>";
-                echo "<input type='hidden' name='processed' value='" . ($item->processed ? 0 : 1) . "'>";
-                $toggle_text = $item->processed ? 'Mark Pending' : 'Mark Processed';
-                $toggle_class = $item->processed ? 'button-secondary' : 'button-primary';
-                echo "<input type='submit' class='button {$toggle_class}' value='{$toggle_text}' style='font-size: 11px; padding: 2px 8px; margin-bottom: 8px;'>";
-                echo "</form>";
-            }
+            // Quick status toggle
+            echo "<form method='post' style='display: inline-block; margin-right: 5px;'>";
+            wp_nonce_field('ehx_wc_update_processed', 'ehx_wc_nonce');
+            echo "<input type='hidden' name='update_processed' value='1'>";
+            echo "<input type='hidden' name='queue_id' value='{$item->id}'>";
+            echo "<input type='hidden' name='processed' value='" . ($item->processed ? 0 : 1) . "'>";
+            $toggle_text = $item->processed ? 'Mark Pending' : 'Mark Processed';
+            $toggle_class = $item->processed ? 'button-secondary' : 'button-primary';
+            echo "<input type='submit' class='button {$toggle_class}' value='{$toggle_text}' style='font-size: 11px; padding: 2px 8px; margin-bottom: 8px;'>";
+            echo "</form>";
+
             echo "<button type='button' class='button button-small view-order-data' data-order-id='{$item->id}' style='font-size: 11px; padding: 2px 8px;'>View Data</button>";
 
             echo "</td>";
@@ -731,12 +643,6 @@ class EHX_WooCommerce_Integration
                 echo "<h5 style='color: #0073aa; font-size: 14px; margin: 0 0 10px 0; padding-bottom: 5px; border-bottom: 1px solid #0073aa;'>Customer Information</h5>";
                 echo "<table style='width: 100%; border-collapse: collapse;'>";
 
-                echo "<tr><td style='padding: 5px 10px ; font-weight: bold; width: 150px;'>Name:</td><td style='padding: 5px 10px;'>" . esc_html($order_data['name'] ?? '') . "</td></tr>";
-                echo "<tr style='background: #f5f5f5;'><td style='padding: 5px 10px; font-weight: bold;'>Email:</td><td style='padding: 5px 10px;'>" . esc_html($order_data['email'] ?? '') . "</td></tr>";
-                echo "<tr><td style='padding: 5px 10px; font-weight: bold;'>Phone:</td><td style='padding: 5px 10px;'>" . esc_html($order_data['telephone'] ?? '') . "</td></tr>";
-                echo "<tr style='background: #f5f5f5;'><td style='padding: 5px 10px; font-weight: bold;'>Company:</td><td style='padding: 5px 10px;'>" . esc_html($order_data['company']) . "</td></tr>";
-                echo "<tr><td style='padding: 5px 10px; font-weight: bold; width: 150px;'>Reference:</td><td style='padding: 5px 10px;'>" . esc_html($order_data['referance'] ?? '') . "</td></tr>";
-                echo "<tr style='background: #f5f5f5;'><td style='padding: 5px 10px; font-weight: bold;'>Payment Method:</td><td style='padding: 5px 10px;'>" . esc_html($order_data['payment_method'] ?? '') . "</td></tr>";
                 echo "<tr><td style='padding: 5px 10px; font-weight: bold;'>Location Key:</td><td style='padding: 5px 10px;'>" . esc_html($order_data['location_key'] ?? '') . "</td></tr>";
                 echo "<tr style='background: #f5f5f5;'><td style='padding: 5px 10px; font-weight: bold;'>Artwork:</td><td style='padding: 5px 10px;'>" . esc_html($order_data['artwork']) . "</td></tr>";
                 echo "<tr><td style='padding: 5px 10px; font-weight: bold;'>Address 1:</td><td style='padding: 5px 10px;'>" . esc_html($order_data['address_line_1'] ?? '') . "</td></tr>";
@@ -951,78 +857,9 @@ class EHX_WooCommerce_Integration
     }
 
     /**
-     * Also add this method to handle AJAX updates (optional - for real-time updates)
+     * Create quote immediately when order is placed
      */
-    public function ajax_update_queue_status()
-    {
-        check_ajax_referer('ehx_wc_ajax_nonce', 'nonce');
-
-        if (!current_user_can('manage_options')) {
-            wp_die('Unauthorized');
-        }
-
-        $queue_id = intval($_POST['queue_id']);
-        $processed = intval($_POST['processed']);
-
-        global $wpdb;
-        $table_name = $wpdb->prefix . 'ehx_wc_order_queue';
-
-        $updated = $wpdb->update(
-            $table_name,
-            array('processed' => $processed),
-            array('id' => $queue_id),
-            array('%d'),
-            array('%d')
-        );
-
-        if ($updated !== false) {
-            wp_send_json_success('Status updated successfully');
-        } else {
-            wp_send_json_error('Failed to update status');
-        }
-    }
-    //===================================finish====================================
-    /**
-     * Schedule cron jobs
-     */
-    public function schedule_crons()
-    {
-        // Schedule order processing
-        if (!wp_next_scheduled('ehx_wc_process_orders')) {
-            $interval = get_option('ehx_wc_quote_interval', 30) * 60; // Convert to seconds
-            wp_schedule_event(time(), $this->get_quote_cron_interval(), 'ehx_wc_process_orders');
-        }
-
-        // Schedule product sync
-        if (!wp_next_scheduled('ehx_wc_sync_products')) {
-            $interval = get_option('ehx_wc_sync_interval', 'hourly');
-            wp_schedule_event(time(), $interval, 'ehx_wc_sync_products');
-        }
-    }
-
-    /**
-     * Get quote processing cron interval
-     */
-    private function get_quote_cron_interval()
-    {
-        $interval_minutes = get_option('ehx_wc_quote_interval', 30);
-
-        // Add custom interval if it doesn't exist
-        add_filter('cron_schedules', function ($schedules) use ($interval_minutes) {
-            $schedules['ehx_wc_quote_interval'] = array(
-                'interval' => $interval_minutes * 60,
-                'display' => sprintf(__('Every %d minutes'), $interval_minutes)
-            );
-            return $schedules;
-        });
-
-        return 'ehx_wc_quote_interval';
-    }
-
-    /**
-     * Queue order for API processing
-     */
-    public function queue_order_for_api($order_id)
+    public function create_quote_immediately($order_id)
     {
         if (!get_option('ehx_wc_quote_enabled', 1)) {
             return;
@@ -1038,7 +875,6 @@ class EHX_WooCommerce_Integration
         global $wpdb;
         $table_name = $wpdb->prefix . 'ehx_wc_order_queue';
 
-        // Insert or update order in queue
         $wpdb->replace(
             $table_name,
             array(
@@ -1048,6 +884,87 @@ class EHX_WooCommerce_Integration
             ),
             array('%d', '%s', '%d')
         );
+
+        $this->send_quote_to_api($order_id, $order_data);
+    }
+
+    /**
+     * Send quote to API
+     */
+    private function send_quote_to_api($order_id, $order_data)
+    {
+        $endpoint = get_option('ehx_wc_quote_endpoint', 'https://www.portal.immersivebrands.co.uk/api/quote');
+        $bearer_token = get_option('ehx_wc_bearer_token', '');
+        $location_key = get_option('ehx_wc_location_key', '');
+
+        $api_url = $endpoint;
+        if (!empty($location_key)) {
+            $api_url = add_query_arg('location_id', $location_key, $endpoint);
+        }
+
+        $curl = curl_init();
+
+        curl_setopt_array($curl, array(
+            CURLOPT_URL => $api_url,
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_ENCODING => '',
+            CURLOPT_MAXREDIRS => 10,
+            CURLOPT_TIMEOUT => 30,
+            CURLOPT_FOLLOWLOCATION => true,
+            CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
+            CURLOPT_CUSTOMREQUEST => 'POST',
+            CURLOPT_POSTFIELDS => json_encode($order_data),
+            CURLOPT_HTTPHEADER => array(
+                'Location-Identifire: ' . $location_key,
+                'Location-ID: ' . $location_key,
+                'Accept: application/json',
+                'Content-Type: application/json',
+                'Authorization: Bearer ' . $bearer_token
+            ),
+        ));
+
+        $response = curl_exec($curl);
+        error_log('EHX Integration: API Response - ' . $response);
+        error_log('EHX Integration: API Response - ' . print_r($order_data, true));
+     
+        $http_code = curl_getinfo($curl, CURLINFO_HTTP_CODE);
+        $error = curl_error($curl);
+        curl_close($curl);
+
+        global $wpdb;
+        $table_name = $wpdb->prefix . 'ehx_wc_order_queue';
+
+        if ($response && $http_code == 200) {
+            // Mark as processed
+            $wpdb->update(
+                $table_name,
+                array('processed' => 1),
+                array('order_id' => $order_id),
+                array('%d'),
+                array('%d')
+            );
+
+            // Log success
+            error_log("EHX Integration: Successfully processed order ID {$order_id}");
+
+            // Add order note
+            $order = wc_get_order($order_id);
+            if ($order) {
+                $order->add_order_note('Quote sent to API successfully');
+            }
+        } else {
+            // Log error
+            $error_message = $error ? $error : "HTTP Code: {$http_code}";
+            error_log("EHX Integration: Error processing order ID {$order_id} - {$error_message}");
+
+            // Add order note about failure
+            $order = wc_get_order($order_id);
+            if ($order) {
+                $order->add_order_note('Failed to send quote to API: ' . $error_message);
+            }
+        }
+
+        return $response;
     }
 
     /**
@@ -1058,6 +975,7 @@ class EHX_WooCommerce_Integration
         $billing = $order->get_address('billing');
 
         $items = array();
+ 
         foreach ($order->get_items() as $item) {
             $product = $item->get_product();
             if (!$product) continue;
@@ -1093,8 +1011,11 @@ class EHX_WooCommerce_Integration
                         $item_data['color'] = ucfirst(strtolower(sanitize_text_field($meta->value)));
                         break;
                     case 'quantity_color':
+                    case 'pa_quantity_color':
+                    case 'quantity_colours':
+                    case 'pa_quantity_colours':
                     case 'quantity_colour':
-
+                    case 'pa_quantity_colour':
                         $item_data['quantity_color'] = ucfirst(strtolower(sanitize_text_field($meta->value)));
                         break;
                     case 'size':
@@ -1201,7 +1122,7 @@ class EHX_WooCommerce_Integration
                 }
             }
 
-            $item_data['color'] = $item_data['color'] ?? '';
+            $item_data['color'] = $item_data['color'] ??  $item_data['quantity_color'] ?? $item_data['size'] ?? $item_data['fitting'] ?? '';
             $item_data['quantity_color'] = $item_data['quantity_color'] ?? '';
             $item_data['size'] = $item_data['size'] ?? '';
             $item_data['fitting'] = $item_data['fitting'] ?? '';
@@ -1213,13 +1134,6 @@ class EHX_WooCommerce_Integration
         $artwork = wp_get_attachment_url($artworkId);
         $company = $order->get_meta('_billing_wooccm10');
 
-        // if (empty($artwork)) {
-        //     $artwork = get_post_meta($order->get_id(), 'billing_woocom11', true);
-        // }
-        // if (empty($company)) {
-        //     $company = get_post_meta($order->get_id(), 'billing_woocom10', true);
-        // }
-
         $country_code = $billing['country'] ?? '';
         $countries = new WC_Countries();
         $country_name = $countries->get_countries()[$country_code] ?? $country_code;
@@ -1228,12 +1142,11 @@ class EHX_WooCommerce_Integration
             'name' => trim($billing['first_name'] . ' ' . $billing['last_name']),
             'email' => $billing['email'],
             'telephone' => $billing['phone'],
-            'artwork' => $artwork ?? '',
+            'artwork' => 'https://www.cricbuzz.com/',
             'company' => $company ?? '',
             'referance' => 'Order #' . $order->get_order_number(),
             'payment_method' => $order->get_payment_method_title(),
             'location_key' => get_option('ehx_wc_location_key', ''),
-
             'address_line_1' => $billing['address_1'] ?? '',
             'address_line_2' => $billing['address_2'] ?? '',
             'city' => $billing['city'] ?? '',
@@ -1259,7 +1172,6 @@ class EHX_WooCommerce_Integration
 
         $clean_attribute_name = str_replace('attribute_', '', $attribute_name);
 
-
         if (strpos($clean_attribute_name, 'pa_') !== 0 && in_array($clean_attribute_name, ['size', 'color', 'colour', 'fitting'])) {
             $taxonomy_name = 'pa_' . str_replace('pa_', '', $clean_attribute_name);
         } else {
@@ -1272,7 +1184,6 @@ class EHX_WooCommerce_Integration
             return $term->name;
         }
 
-
         $term_by_name = get_term_by('name', $value, $taxonomy_name);
 
         if ($term_by_name && !is_wp_error($term_by_name)) {
@@ -1283,89 +1194,6 @@ class EHX_WooCommerce_Integration
             return sanitize_text_field($value);
         }
         return ucwords(str_replace(array('-', '_'), ' ', $value));
-    }
-    /**
-     * Process queued orders
-     */
-    public function process_queued_orders()
-    {
-        if (!get_option('ehx_wc_quote_enabled', 1)) {
-            return;
-        }
-
-        global $wpdb;
-        $table_name = $wpdb->prefix . 'ehx_wc_order_queue';
-
-        // Get pending orders
-        $orders = $wpdb->get_results(
-            "SELECT * FROM $table_name WHERE processed = 0 ORDER BY created_at ASC"
-        );
-
-        if (empty($orders)) {
-            return;
-        }
-
-        $endpoint = get_option('ehx_wc_quote_endpoint', 'https://www.portal.immersivebrands.co.uk/api/quote');
-        $bearer_token = get_option('ehx_wc_bearer_token', '');
-        $location_key = get_option('ehx_wc_location_key', '');
-
-        foreach ($orders as $queue_item) {
-            $order_data = json_decode($queue_item->order_data, true);
-            //  error_log('Raw Order Data from Queue: ' . print_r($order_data, true));
-            //  error_log('JSON Sent to API: ' . json_encode($order_data));
-            // Prepare URL with location parameter
-            $api_url = $endpoint;
-            if (!empty($location_key)) {
-                $api_url = add_query_arg('location_id', $location_key, $endpoint);
-            }
-
-            $curl = curl_init();
-
-            curl_setopt_array($curl, array(
-                CURLOPT_URL => $api_url,
-                CURLOPT_RETURNTRANSFER => true,
-                CURLOPT_ENCODING => '',
-                CURLOPT_MAXREDIRS => 10,
-                CURLOPT_TIMEOUT => 0,
-                CURLOPT_FOLLOWLOCATION => true,
-                CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
-                CURLOPT_CUSTOMREQUEST => 'POST',
-                CURLOPT_POSTFIELDS => json_encode($order_data),
-                CURLOPT_HTTPHEADER => array(
-                    'Location-Identifire: ' . $location_key,
-                    'Location-ID: ' . $location_key,
-                    'Accept: application/json',
-                    'Content-Type: application/json',
-                    'Authorization: Bearer ' . $bearer_token
-                ),
-            ));
-
-            $response = curl_exec($curl);
-            curl_close($curl);
-
-            if ($response) {
-                // Mark as processed
-                $wpdb->update(
-                    $table_name,
-                    array('processed' => 1),
-                    array('id' => $queue_item->id),
-                    array('%d'),
-                    array('%d')
-                );
-
-                // Log success
-                error_log("EHX Integration: Successfully processed order ID {$queue_item->order_id}");
-
-                // Add order note
-                $order = wc_get_order($queue_item->order_id);
-                if ($order) {
-                    $order->add_order_note('Quote sent to API successfully');
-                }
-            } else {
-                // Log error
-                error_log("EHX Integration: Error processing order ID {$queue_item->order_id}");
-            }
-        }
     }
 
     /**
@@ -1413,7 +1241,7 @@ class EHX_WooCommerce_Integration
         $api_url = add_query_arg(array(
             'page' => $current_page,
             'per_page' => $per_page,
-            'express' => 'true' // Filter for express products if API supports it
+            'express' => 'true'
         ), $endpoint);
 
         $curl = curl_init();
@@ -1454,6 +1282,7 @@ class EHX_WooCommerce_Integration
         if (!$response_data || !isset($response_data['data'])) {
             return array('success' => false, 'message' => 'Invalid API response');
         }
+
         if (isset($response_data['total'])) {
             update_option('ehx_wc_product_total_number', $response_data['total']);
         } elseif (isset($response_data['meta']['total'])) {
@@ -1494,11 +1323,6 @@ class EHX_WooCommerce_Integration
             }
         }
 
-        // if ($created_count > 0 || $updated_count > 0) {
-        //     $current_stored = get_option('ehx_wc_product_stored_number', 0);
-        //     $new_stored = $current_stored + $created_count + $updated_count;
-        //     update_option('ehx_wc_product_stored_number', $new_stored);
-        // }
         if ($created_count > 0) {
             $current_stored = get_option('ehx_wc_product_stored_number', 0);
             $new_stored = $current_stored + $created_count;
@@ -1564,7 +1388,6 @@ class EHX_WooCommerce_Integration
         ));
     }
 
-
     /**
      * Create or update a product
      */
@@ -1599,7 +1422,6 @@ class EHX_WooCommerce_Integration
             if (!empty($product_data['description'])) {
                 $product->set_description($product_data['description']);
             }
-
 
             // Set pricing
             $regular_price = floatval($product_data['unit_price']);
@@ -1796,7 +1618,6 @@ class EHX_WooCommerce_Integration
     public function activate()
     {
         $this->create_queue_table();
-        $this->schedule_crons();
     }
 
     /**
@@ -1804,8 +1625,7 @@ class EHX_WooCommerce_Integration
      */
     public function deactivate()
     {
-        wp_clear_scheduled_hook('ehx_wc_process_orders');
-        wp_clear_scheduled_hook('ehx_wc_sync_products');
+        // Clean up if needed
     }
 }
 
