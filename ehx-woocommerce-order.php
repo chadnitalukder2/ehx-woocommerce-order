@@ -3,7 +3,7 @@
 /**
  * Plugin Name: EHx WooCommerce Order
  * Description: Complete integration for WooCommerce - syncs products from API and sends order quotes to API
- * Version: 1.0.4
+ * Version: 1.0.3
  * Author:  EH Studio
  */
 
@@ -667,16 +667,11 @@ class EHX_WooCommerce_Integration
                         echo "<tr><td style='padding: 3px 10px; font-weight: bold; width: 120px;'>Product:</td><td style='padding: 3px 10px;'>" . esc_html($orderItem['product'] ?? '') . "</td></tr>";
                         echo "<tr><td style='padding: 3px 10px; font-weight: bold;'>Quantity:</td><td style='padding: 3px 10px;'>" . esc_html($orderItem['quantity'] ?? '') . "</td></tr>";
                         echo "<tr><td style='padding: 3px 10px; font-weight: bold;'>Setup Price:</td><td style='padding: 3px 10px;'>$" . esc_html($orderItem['setup_price'] ?? '0') . "</td></tr>";
-                        echo "<tr><td style='padding: 3px 10px; font-weight: bold;'>Color:</td><td style='padding: 3px 10px;'>" . esc_html($orderItem['color']) . "</td></tr>";
-                        if (isset($orderItem['quantity_color'])) {
-                            echo "<tr><td style='padding: 3px 10px; font-weight: bold;'>Quantity Color:</td><td style='padding: 3px 10px;'>" . esc_html($orderItem['quantity_color']) . "</td></tr>";
-                        }
-                        if (isset($orderItem['size'])) {
-                            echo "<tr><td style='padding: 3px 10px; font-weight: bold;'>Size:</td><td style='padding: 3px 10px;'>" . esc_html($orderItem['size']) . "</td></tr>";
-                        }
-                        if (isset($orderItem['fitting'])) {
-                            echo "<tr><td style='padding: 3px 10px; font-weight: bold;'>Fitting:</td><td style='padding: 3px 10px;'>" . esc_html($orderItem['fitting']) . "</td></tr>";
-                        }
+                        echo "<tr><td style='padding: 3px 10px; font-weight: bold;'>Color/Size/Fitting:</td><td style='padding: 3px 10px;'>" . esc_html($orderItem['color'])  . "</td></tr>";
+                        // echo "<tr><td style='padding: 3px 10px; font-weight: bold;'>Quantity Color:</td><td style='padding: 3px 10px;'>" . esc_html($orderItem['quantity_color']) . "</td></tr>";
+                        // echo "<tr><td style='padding: 3px 10px; font-weight: bold;'>Size:</td><td style='padding: 3px 10px;'>" . esc_html($orderItem['size']) . "</td></tr>";
+                        // echo "<tr><td style='padding: 3px 10px; font-weight: bold;'>Fitting:</td><td style='padding: 3px 10px;'>" . esc_html($orderItem['fitting']) . "</td></tr>";
+                        
                         echo "</table>";
                         echo "</div>";
                     }
@@ -1142,7 +1137,7 @@ class EHX_WooCommerce_Integration
             'name' => trim($billing['first_name'] . ' ' . $billing['last_name']),
             'email' => $billing['email'],
             'telephone' => $billing['phone'],
-            'artwork' => 'https://www.cricbuzz.com/',
+            'artwork' =>  $artwork ?? null,
             'company' => $company ?? '',
             'referance' => 'Order #' . $order->get_order_number(),
             'payment_method' => $order->get_payment_method_title(),
@@ -1197,7 +1192,7 @@ class EHX_WooCommerce_Integration
     }
 
     /**
-     * AJAX handler for manual product sync
+     * AJAX handler for manual product sync=============================================================================
      */
     public function sync_products_ajax()
     {
