@@ -346,7 +346,7 @@ class EHX_WooCommerce_Integration
                 });
             });
         </script>
-        <?php
+    <?php
     }
 
     public function process_order($queue_id)
@@ -671,7 +671,7 @@ class EHX_WooCommerce_Integration
                         // echo "<tr><td style='padding: 3px 10px; font-weight: bold;'>Quantity Color:</td><td style='padding: 3px 10px;'>" . esc_html($orderItem['quantity_color']) . "</td></tr>";
                         // echo "<tr><td style='padding: 3px 10px; font-weight: bold;'>Size:</td><td style='padding: 3px 10px;'>" . esc_html($orderItem['size']) . "</td></tr>";
                         // echo "<tr><td style='padding: 3px 10px; font-weight: bold;'>Fitting:</td><td style='padding: 3px 10px;'>" . esc_html($orderItem['fitting']) . "</td></tr>";
-                        
+
                         echo "</table>";
                         echo "</div>";
                     }
@@ -735,7 +735,7 @@ class EHX_WooCommerce_Integration
         }
 
         // JavaScript for interactions
-        ?>
+    ?>
         <script>
             jQuery(document).ready(function($) {
                 // Select all checkbox
@@ -921,7 +921,7 @@ class EHX_WooCommerce_Integration
         $response = curl_exec($curl);
         error_log('EHX Integration: API Response - ' . $response);
         error_log('EHX Integration: API Response - ' . print_r($order_data, true));
-     
+
         $http_code = curl_getinfo($curl, CURLINFO_HTTP_CODE);
         $error = curl_error($curl);
         curl_close($curl);
@@ -970,7 +970,7 @@ class EHX_WooCommerce_Integration
         $billing = $order->get_address('billing');
 
         $items = array();
- 
+
         foreach ($order->get_items() as $item) {
             $product = $item->get_product();
             if (!$product) continue;
@@ -1125,19 +1125,28 @@ class EHX_WooCommerce_Integration
             $items[] = $item_data;
         }
 
-        $artworkId = $order->get_meta('_billing_wooccm1');
-        $artwork = wp_get_attachment_url($artworkId);
+        // $artworkId = $order->get_meta('_billing_wooccm1');
+        // $artwork = wp_get_attachment_url($artworkId);
         $company = $order->get_meta('_billing_wooccm10');
+
+        $artworkId = $order->get_meta('_billing_wooccm1');
+        $artwork = '';
+
+        if (!empty($artworkId) && is_numeric($artworkId)) {
+            $artwork_url = wp_get_attachment_url($artworkId);
+            $artwork = ($artwork_url !== false) ? $artwork_url : '';
+        }
 
         $country_code = $billing['country'] ?? '';
         $countries = new WC_Countries();
         $country_name = $countries->get_countries()[$country_code] ?? $country_code;
 
+
         return array(
             'name' => trim($billing['first_name'] . ' ' . $billing['last_name']),
             'email' => $billing['email'],
             'telephone' => $billing['phone'],
-            'artwork' =>  $artwork ?? null,
+            'artwork' => $artwork ,
             'company' => $company ?? '',
             'referance' => 'Order #' . $order->get_order_number(),
             'payment_method' => $order->get_payment_method_title(),
