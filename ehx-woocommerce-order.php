@@ -3,7 +3,7 @@
 /**
  * Plugin Name: EHx WooCommerce Order
  * Description: Complete integration for WooCommerce - syncs products from API and sends order quotes to API
- * Version: 1.0.1
+ * Version: 1.0.3
  * Author:  EH Studio
  */
 
@@ -380,8 +380,12 @@ class EHX_WooCommerce_Integration
                             action: 'sync_products',
                             nonce: '<?php echo wp_create_nonce('sync_products_nonce'); ?>'
                         },
+
+                      
                         success: function(response) {
+                      
                             if (response.success) {
+                                error_log('Sync Products Response: ' + JSON.stringify(response));
                                 $('#sync-status').html('<p style="color: green;">' + response.data.message + '</p>');
                             } else {
                                 $('#sync-status').html('<p style="color: red;">Error: ' + response.data + '</p>');
@@ -709,7 +713,6 @@ class EHX_WooCommerce_Integration
                 echo "<input type='submit' class='button {$toggle_class}' value='{$toggle_text}' style='font-size: 11px; padding: 2px 8px; margin-bottom: 8px;'>";
                 echo "</form>";
             }
-            // View order data button
             echo "<button type='button' class='button button-small view-order-data' data-order-id='{$item->id}' style='font-size: 11px; padding: 2px 8px;'>View Data</button>";
 
             echo "</td>";
@@ -721,7 +724,6 @@ class EHX_WooCommerce_Integration
             echo "<div style='background: #f9f9f9; border-bottom: 1px solid #ddd; border-top: 1px solid #ddd; padding: 15px; '>";
             echo "<h4>Order Data for Queue ID #{$item->id}</h4>";
 
-            // Use $order_data directly (it's already decoded above)
             if ($order_data && is_array($order_data)) {
                 // Customer Information Section
                 echo "<div style='background: white; padding: 15px; margin-bottom: 15px; border-radius: 5px;'>";
@@ -759,10 +761,15 @@ class EHX_WooCommerce_Integration
                         echo "<tr><td style='padding: 3px 10px; font-weight: bold;'>Quantity:</td><td style='padding: 3px 10px;'>" . esc_html($orderItem['quantity'] ?? '') . "</td></tr>";
                         echo "<tr><td style='padding: 3px 10px; font-weight: bold;'>Setup Price:</td><td style='padding: 3px 10px;'>$" . esc_html($orderItem['setup_price'] ?? '0') . "</td></tr>";
                         echo "<tr><td style='padding: 3px 10px; font-weight: bold;'>Color:</td><td style='padding: 3px 10px;'>" . esc_html($orderItem['color']) . "</td></tr>";
-                        echo "<tr><td style='padding: 3px 10px; font-weight: bold;'>Quantity Color:</td><td style='padding: 3px 10px;'>" . esc_html($orderItem['quantity_color']) . "</td></tr>";
-                        echo "<tr><td style='padding: 3px 10px; font-weight: bold;'>Size:</td><td style='padding: 3px 10px;'>" . esc_html($orderItem['size']) . "</td></tr>";
-                        echo "<tr><td style='padding: 3px 10px; font-weight: bold;'>Fitting:</td><td style='padding: 3px 10px;'>" . esc_html($orderItem['fitting']) . "</td></tr>";
-
+                        if (isset($orderItem['quantity_color'])) {
+                            echo "<tr><td style='padding: 3px 10px; font-weight: bold;'>Quantity Color:</td><td style='padding: 3px 10px;'>" . esc_html($orderItem['quantity_color']) . "</td></tr>";
+                        }
+                        if (isset($orderItem['size'])) {
+                            echo "<tr><td style='padding: 3px 10px; font-weight: bold;'>Size:</td><td style='padding: 3px 10px;'>" . esc_html($orderItem['size']) . "</td></tr>";
+                        }
+                        if (isset($orderItem['fitting'])) {
+                            echo "<tr><td style='padding: 3px 10px; font-weight: bold;'>Fitting:</td><td style='padding: 3px 10px;'>" . esc_html($orderItem['fitting']) . "</td></tr>";
+                        }
                         echo "</table>";
                         echo "</div>";
                     }
