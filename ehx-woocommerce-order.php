@@ -25,8 +25,9 @@ class EHX_WooCommerce_Integration
         add_action('admin_init', array($this, 'settings_init'));
 
         // Quote API hooks
-        add_action('woocommerce_order_status_processing', array($this, 'queue_order_for_api'));
-        add_action('woocommerce_order_status_completed', array($this, 'queue_order_for_api'));
+        // add_action('woocommerce_order_status_processing', array($this, 'queue_order_for_api'));
+        // add_action('woocommerce_order_status_completed', array($this, 'queue_order_for_api'));
+        add_action('woocommerce_new_order', array($this, 'queue_order_for_api'));
 
         // Product sync hooks
         add_action('wp_ajax_sync_products', array($this, 'sync_products_ajax'));
