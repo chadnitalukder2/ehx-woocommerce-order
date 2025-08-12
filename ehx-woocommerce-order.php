@@ -1142,7 +1142,7 @@ class EHX_WooCommerce_Integration
         // $artwork = wp_get_attachment_url($artworkId);
         $company = $order->get_meta('_billing_wooccm10');
 
-        $artworkId = $order->get_meta('_billing_wooccm1');
+        $artworkId = $order->get_meta('_billing_wooccm11');
         $artwork = '';
 
         if (!empty($artworkId) && is_numeric($artworkId)) {
